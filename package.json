@@ -1,0 +1,40 @@
+{
+  "name": "snap-astreinte",
+  "version": "0.1.0",
+  "description": "Permanence technique automatisée : répond aux demandes d'aide IT sur le canal de votre choix, avec un contexte isolé par interlocuteur et des notes vocales générées par TTS.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "snap-astreinte": "./dist/index.js"
+  },
+  "main": "./dist/index.js",
+  "files": ["dist", "plugin.json", ".claude-plugin", "gemini-extension.json", "README.md"],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "typecheck": "tsc --noEmit",
+    "start": "node dist/index.js daemon",
+    "mcp": "node dist/index.js mcp",
+    "test": "tsc && node --test --test-timeout=25000 --test-force-exit dist/snap-astreinte.test.js dist/e2e.test.js",
+    "check": "node dist/index.js check"
+  },
+  "keywords": [
+    "mcp",
+    "modelcontextprotocol",
+    "claude-code-plugin",
+    "gemini-cli-extension",
+    "support",
+    "helpdesk",
+    "tts"
+  ],
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  }
+}

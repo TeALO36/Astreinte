@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "snap-astreinte",
+  "displayName": "Astreinte",
+  "version": "0.1.0",
+  "description": "Permanence technique automatisée : répond aux demandes d'aide IT avec un contexte isolé par interlocuteur et des notes vocales générées par TTS.",
+  "author": {
+    "name": "Teano"
+  },
+  "license": "MIT",
+  "keywords": ["support", "helpdesk", "tts", "automation"],
+  "mcpServers": "./mcp/mcp.json"
+}

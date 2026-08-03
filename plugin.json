@@ -1,0 +1,307 @@
+{
+  "schema": "https://lochor.dev/schema/plugin.json/v0.1",
+  "apiVersion": "0.1",
+  "name": "snap-astreinte",
+  "version": "0.1.0",
+  "description": "Permanence technique automatisée : répond aux demandes d'aide IT avec un contexte isolé par interlocuteur, une personnalité configurable et des notes vocales générées par TTS.",
+  "author": "Teano",
+  "license": "MIT",
+  "keywords": ["support", "helpdesk", "tts", "mcp", "automation"],
+  "permissions": {
+    "network": {
+      "reason": "Recevoir et envoyer les messages sur le canal configuré, et appeler le LLM et le TTS",
+      "scope": "always"
+    },
+    "shell": {
+      "reason": "Lancer la commande TTS locale quand la synthèse vocale est en mode commande",
+      "scope": "always"
+    },
+    "env": ["SNAP_ASTREINTE_TELEGRAM_TOKEN", "SNAP_ASTREINTE_LLM_API_KEY"]
+  },
+  "components": {
+    "mcp": "mcp/mcp.json"
+  },
+  "config": {
+    "schema": {
+      "persona.name": {
+        "type": "string",
+        "title": "Nom de l'assistant",
+        "description": "Le nom sous lequel il se présente. Laissez vide pour qu'il ne se nomme pas.",
+        "default": "",
+        "group": "Personnalité"
+      },
+      "persona.style": {
+        "type": "text",
+        "title": "Personnalité et ton",
+        "description": "Décrivez librement comment il doit se comporter et s'exprimer. C'est ce texte qui devient son instruction principale.",
+        "default": "Tu réponds à des demandes d'aide informatique. Ton direct et concret, sans jargon inutile. Tu vas droit à la solution, étape par étape, et tu demandes une précision quand la question est ambiguë plutôt que de deviner.",
+        "group": "Personnalité"
+      },
+      "persona.language": {
+        "type": "select",
+        "title": "Langue des réponses",
+        "options": ["auto", "fr", "en"],
+        "optionLabels": ["Celle du message reçu", "Français", "Anglais"],
+        "default": "auto",
+        "group": "Personnalité"
+      },
+      "persona.disclose_ai": {
+        "type": "boolean",
+        "title": "Annoncer qu'il est un assistant si on le lui demande",
+        "description": "Décoché, il éludera la question. Répondre honnêtement à « c'est un bot ? » est ce qui distingue un assistant d'une usurpation.",
+        "default": true,
+        "group": "Personnalité"
+      },
+
+      "limits.enabled": {
+        "type": "boolean",
+        "title": "Activer les garde-fous",
+        "description": "Décochez pour un fonctionnement 100 % autonome sans aucune limite ni escalade. Tout ce qui suit est alors ignoré.",
+        "default": true,
+        "group": "Garde-fous"
+      },
+      "limits.scope": {
+        "type": "text",
+        "title": "Ce qu'il a le droit de traiter",
+        "default": "Dépannage informatique courant : Windows, macOS, Android, iOS, réseau domestique, navigateurs, comptes et mots de passe oubliés, imprimantes, lenteurs, virus supposés, installation de logiciels.",
+        "group": "Garde-fous"
+      },
+      "limits.forbidden": {
+        "type": "text",
+        "title": "Ce qu'il doit refuser et escalader",
+        "description": "Sujets à renvoyer vers vous plutôt que traiter seul.",
+        "default": "Toute intervention destructive (formatage, suppression de données, réinitialisation d'usine), la récupération de données perdues, les demandes touchant à des comptes bancaires ou à des paiements, le contournement de sécurité ou de mot de passe d'un appareil qui n'appartient pas à la personne, et tout ce qui engage un déplacement ou une facturation.",
+        "group": "Garde-fous"
+      },
+      "limits.max_reply_chars": {
+        "type": "number",
+        "title": "Longueur maximale d'une réponse",
+        "description": "En caractères. Au-delà, il résume et propose de détailler.",
+        "default": 900,
+        "min": 200,
+        "max": 4000,
+        "group": "Garde-fous"
+      },
+      "limits.max_turns_before_escalation": {
+        "type": "number",
+        "title": "Tours avant escalade automatique",
+        "description": "Si le problème n'est pas résolu après ce nombre d'échanges, il passe la main. 0 désactive cette règle.",
+        "default": 8,
+        "min": 0,
+        "max": 50,
+        "group": "Garde-fous"
+      },
+      "limits.escalation_keywords": {
+        "type": "list",
+        "title": "Mots déclenchant une escalade immédiate",
+        "default": ["urgent", "urgence", "plainte", "avocat", "facture", "remboursement", "données perdues"],
+        "group": "Garde-fous"
+      },
+      "limits.escalation_message": {
+        "type": "text",
+        "title": "Message envoyé lors d'une escalade",
+        "default": "Là je préfère que ce soit traité directement — je transmets, on te répond dès que possible.",
+        "group": "Garde-fous"
+      },
+      "limits.active_hours": {
+        "type": "string",
+        "title": "Plage horaire de réponse",
+        "description": "Format 08:00-22:00. Vide = répond à toute heure. Hors plage, les messages sont mis en file et traités à la réouverture.",
+        "default": "",
+        "group": "Garde-fous"
+      },
+
+      "voice.mode": {
+        "type": "select",
+        "title": "Notes vocales",
+        "options": ["on_request", "always", "never"],
+        "optionLabels": ["Quand on en demande une", "Toujours répondre en vocal", "Jamais"],
+        "description": "En mode « à la demande », il détecte les formulations du type « tu peux me faire un vocal ».",
+        "default": "on_request",
+        "group": "Voix"
+      },
+      "voice.max_chars": {
+        "type": "number",
+        "title": "Longueur maximale d'un vocal",
+        "description": "En caractères de texte synthétisé. Au-delà, la réponse part en texte.",
+        "default": 600,
+        "min": 100,
+        "max": 3000,
+        "group": "Voix"
+      },
+      "voice.tts_mode": {
+        "type": "select",
+        "title": "Moteur de synthèse",
+        "options": ["http", "command", "disabled"],
+        "optionLabels": ["Serveur HTTP compatible OpenAI", "Commande locale", "Désactivé"],
+        "default": "http",
+        "group": "Voix"
+      },
+      "voice.tts_url": {
+        "type": "string",
+        "title": "URL du serveur TTS",
+        "description": "Endpoint compatible /v1/audio/speech.",
+        "default": "http://127.0.0.1:8080/v1/audio/speech",
+        "group": "Voix"
+      },
+      "voice.tts_model": {
+        "type": "string",
+        "title": "Modèle TTS",
+        "default": "",
+        "group": "Voix"
+      },
+      "voice.tts_voice": {
+        "type": "string",
+        "title": "Voix",
+        "description": "Identifiant de voix du serveur TTS.",
+        "default": "",
+        "group": "Voix"
+      },
+      "voice.tts_command": {
+        "type": "string",
+        "title": "Commande TTS locale",
+        "description": "Utilisée en mode « commande ». {text} = texte à dire, {out} = fichier WAV à produire, {ref} = échantillon de voix.",
+        "default": "piper --model voice.onnx --output_file {out}",
+        "group": "Voix"
+      },
+      "voice.reference_sample": {
+        "type": "path",
+        "title": "Échantillon de voix à cloner",
+        "description": "Fichier audio de référence, pour les moteurs qui savent cloner une voix. Vide = voix par défaut du moteur.",
+        "default": "",
+        "group": "Voix"
+      },
+
+      "llm.base_url": {
+        "type": "string",
+        "title": "Endpoint du modèle",
+        "description": "API compatible OpenAI. Par défaut le llama-server local.",
+        "default": "http://127.0.0.1:8080/v1",
+        "group": "Modèle"
+      },
+      "llm.model": {
+        "type": "string",
+        "title": "Modèle",
+        "default": "local",
+        "group": "Modèle"
+      },
+      "llm.api_key": {
+        "type": "secret",
+        "title": "Clé d'API",
+        "description": "Inutile pour un serveur local.",
+        "default": "",
+        "group": "Modèle"
+      },
+      "llm.temperature": {
+        "type": "number",
+        "title": "Température",
+        "default": 0.4,
+        "min": 0,
+        "max": 2,
+        "step": 0.1,
+        "group": "Modèle"
+      },
+      "llm.timeout_ms": {
+        "type": "number",
+        "title": "Délai d'attente du modèle",
+        "description": "En millisecondes. Le premier appel après démarrage est lent : le modèle doit se charger en mémoire.",
+        "default": 120000,
+        "min": 1000,
+        "max": 600000,
+        "group": "Modèle"
+      },
+
+      "transport.driver": {
+        "type": "select",
+        "title": "Canal",
+        "options": ["telegram", "snapchat"],
+        "optionLabels": ["Telegram", "Snapchat (driver à fournir)"],
+        "default": "telegram",
+        "group": "Canal"
+      },
+      "transport.telegram_token": {
+        "type": "secret",
+        "title": "Jeton du bot Telegram",
+        "description": "Obtenu auprès de @BotFather. Peut aussi venir de la variable SNAP_ASTREINTE_TELEGRAM_TOKEN.",
+        "default": "",
+        "group": "Canal"
+      },
+      "transport.bridge_url": {
+        "type": "string",
+        "title": "Adresse du pont",
+        "description": "Pour les canaux sans API officielle : URL locale du processus qui relaie les messages. Contrat documenté dans src/transports/bridge.ts.",
+        "default": "http://127.0.0.1:8765",
+        "group": "Canal"
+      },
+      "transport.bridge_token": {
+        "type": "secret",
+        "title": "Jeton du pont",
+        "description": "Facultatif, si votre pont exige une authentification.",
+        "default": "",
+        "group": "Canal"
+      },
+      "transport.poll_interval_ms": {
+        "type": "number",
+        "title": "Intervalle de relève",
+        "description": "En millisecondes.",
+        "default": 2000,
+        "min": 500,
+        "max": 60000,
+        "group": "Canal"
+      },
+
+      "notify.enabled": {
+        "type": "boolean",
+        "title": "Me prévenir sur Telegram",
+        "description": "Envoie une alerte à l'exploitant de l'extension quand une demande est escaladée ou qu'une erreur bloque une réponse. Indépendant du canal sur lequel tournent les conversations.",
+        "default": false,
+        "group": "Alertes"
+      },
+      "notify.telegram_token": {
+        "type": "secret",
+        "title": "Jeton du bot d'alerte",
+        "description": "Peut être le même bot que le canal, ou un bot dédié.",
+        "default": "",
+        "group": "Alertes"
+      },
+      "notify.telegram_chat_id": {
+        "type": "string",
+        "title": "Votre identifiant de conversation",
+        "description": "Écrivez une fois à votre bot, puis relevez l'id via getUpdates.",
+        "default": "",
+        "group": "Alertes"
+      },
+      "notify.on_escalation": {
+        "type": "boolean",
+        "title": "Alerter à chaque escalade",
+        "default": true,
+        "group": "Alertes"
+      },
+      "notify.on_error": {
+        "type": "boolean",
+        "title": "Alerter quand une réponse échoue",
+        "default": true,
+        "group": "Alertes"
+      },
+
+      "context.max_history_turns": {
+        "type": "number",
+        "title": "Tours conservés par interlocuteur",
+        "description": "Au-delà, les plus anciens sont résumés.",
+        "default": 20,
+        "min": 4,
+        "max": 200,
+        "group": "Contexte"
+      },
+      "context.retention_days": {
+        "type": "number",
+        "title": "Rétention des conversations",
+        "description": "En jours. 0 = ne jamais purger.",
+        "default": 30,
+        "min": 0,
+        "max": 365,
+        "group": "Contexte"
+      }
+    }
+  }
+}

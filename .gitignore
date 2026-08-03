@@ -1,0 +1,13 @@
+# Dépendances
+node_modules/
+
+# Données d'exécution et base de données locale (secrets potentiels)
+.freebuff/
+.data/
+*.db
+*.db-shm
+*.db-wal
+
+# Environnement
+.env
+.env.*
