@@ -1,0 +1,9 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.env
+.env.local
+
+# Browser/session state (contains authentication material — never commit)
+.snapmcp/
+.telegram/
