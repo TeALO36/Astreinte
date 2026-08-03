@@ -1,8 +1,9 @@
 // SnapMCP smoke test — spawns the server and exercises MCP tools over stdio.
 import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
-const proc = spawn("node", ["dist/index.js"], {
-  cwd: new URL("..", import.meta.url).pathname,
+const proc = spawn("node", ["dist/snapmcp.js"], {
+  cwd: fileURLToPath(new URL("..", import.meta.url)),
 });
 
 let buf = "";

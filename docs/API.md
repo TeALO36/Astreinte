@@ -112,14 +112,14 @@ La couche `SnapchatClient` est une **interface TypeScript** conservée comme con
 ## Utilisation (mode mock)
 
 ```bash
-# Démarrer le serveur (stdio)
-npm start
+# Démarrer le serveur MCP (stdio)
+npm run snapmcp
 
-# Mode développement (reload automatique)
-npm run dev
+# Test rapide des tools sur le mock
+npm run smoke
 ```
 
-Le serveur MCP communique via stdin/stdout. Configure ton client MCP (Claude Desktop, Cursor, etc.) pour pointer vers `npm start` dans le répertoire du projet.
+Le serveur MCP communique via stdin/stdout. Configure ton client MCP (Claude Desktop, Cursor, etc.) pour pointer vers `npm run snapmcp` dans le répertoire du projet.
 
 ### Config exemple pour Claude Desktop
 
@@ -128,7 +128,7 @@ Le serveur MCP communique via stdin/stdout. Configure ton client MCP (Claude Des
   "mcpServers": {
     "snapmcp": {
       "command": "node",
-      "args": ["dist/index.js"],
+      "args": ["dist/snapmcp.js"],
       "cwd": "/chemin/vers/SnapMCP"
     }
   }
@@ -168,7 +168,7 @@ Le backend Telegram utilise un **compte utilisateur MTProto**, pas un bot. Il fa
 export TELEGRAM_API_ID=123456
 export TELEGRAM_API_HASH=...
 npm run telegram:login
-SNAPCHAT_CLIENT=telegram npm start
+SNAPCHAT_CLIENT=telegram npm run snapmcp
 ```
 
 `telegram:login` demande le numéro de téléphone, le code reçu dans Telegram et le mot de passe 2FA éventuel. Il écrit une session réutilisable dans `.telegram/session.txt`, ignoré par git. Cette session est un secret équivalent à une connexion complète : ne jamais la publier.

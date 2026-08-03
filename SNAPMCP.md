@@ -54,13 +54,13 @@ npm install
 npm run build
 
 # Lancer (mode stdio pour client MCP)
-npm start
+npm run snapmcp
 
-# Développement (reload automatique)
+# Développement (recompilation automatique)
 npm run dev
 
 # Test rapide (exercice des tools MCP sur le mock)
-npm test
+npm run smoke
 ```
 
 ## 🖥️ Configuration Freebuff Preview
@@ -70,10 +70,10 @@ Les commandes du projet sont définies dans `package.json`. Pour démarrer un ap
 | Paramètre | Commande | Détails |
 |---|---|---|
 | Install | `npm install` | Installation des dépendances |
-| Dev / Preview | `npm run dev` | Serveur MCP en mode watch (stdio, pas de port HTTP) |
+| Dev / Preview | `npm run dev` | Recompilation TypeScript en continu (le serveur se lance avec `npm run snapmcp`) |
 | Build | `npm run build` | Compilation TypeScript → `dist/` |
 
-> ⚠️ **Note** : SnapMCP est un serveur MCP qui communique en **stdio** (standard input/output), pas un serveur web. L'aperçu n'expose donc pas de page web sur un port ; il est conçu pour être consommé par un client MCP (Claude Desktop, Cursor, etc.). Pour tester les tools, connecte ton client MCP à la commande `npm start`.
+> ⚠️ **Note** : SnapMCP est un serveur MCP qui communique en **stdio** (standard input/output), pas un serveur web. L'aperçu n'expose donc pas de page web sur un port ; il est conçu pour être consommé par un client MCP (Claude Desktop, Cursor, etc.). Pour tester les tools, connecte ton client MCP à la commande `npm run snapmcp`.
 
 ## 🔧 Configuration client MCP
 
@@ -84,7 +84,7 @@ Ajoute ce bloc à la config de ton client MCP :
   "mcpServers": {
     "snapmcp": {
       "command": "node",
-      "args": ["dist/index.js"],
+      "args": ["dist/snapmcp.js"],
       "cwd": "/chemin/vers/SnapMCP"
     }
   }
@@ -123,7 +123,7 @@ src/
     ├── telegram-client.ts # GramJS/MTProto sur compte Telegram utilisateur
     └── index.ts            # Factory createSnapchatClient()
 scripts/
-├── smoke-test.mjs      # Exercice des tools via stdio (npm test)
+├── smoke-test.mjs      # Exercice des tools via stdio (npm run smoke)
 └── telegram-login.mjs  # Première connexion Telegram et sauvegarde de session
 docs/
 ├── API.md            # Documentation API complète
@@ -134,11 +134,11 @@ docs/
 
 ```bash
 # Client Web (messages, snaps, appels live) — premier login via QR code
-SNAPCHAT_CLIENT=web SNAPCHAT_HEADLESS=0 npm start   # scan du QR une fois
-SNAPCHAT_CLIENT=web npm start                       # ensuite, headless
+SNAPCHAT_CLIENT=web SNAPCHAT_HEADLESS=0 npm run snapmcp   # scan du QR une fois
+SNAPCHAT_CLIENT=web npm run snapmcp                       # ensuite, headless
 
 # Client ADB (messages + notes vocales) — téléphone branché ou Wi-Fi
-SNAPCHAT_CLIENT=adb ADB_SERIAL=<serial> npm start
+SNAPCHAT_CLIENT=adb ADB_SERIAL=<serial> npm run snapmcp
 
 # Client Telegram (messages + vraies notes vocales audio)
 # 1) renseigner TELEGRAM_API_ID et TELEGRAM_API_HASH
@@ -151,7 +151,7 @@ SNAPCHAT_CLIENT=telegram npm start
 1. Crée une application sur [my.telegram.org](https://my.telegram.org) et récupère `TELEGRAM_API_ID` / `TELEGRAM_API_HASH`.
 2. Lance `npm run telegram:login`, puis termine la connexion avec ton numéro, le code reçu dans Telegram et ton mot de passe 2FA si activé.
 3. La session est sauvegardée dans `.telegram/session.txt` (ignoré par git). Traite-la comme un mot de passe : ne la partage jamais.
-4. Lance `SNAPCHAT_CLIENT=telegram npm start`.
+4. Lance `SNAPCHAT_CLIENT=telegram npm run snapmcp`.
 5. Pour `send_voice_note`, fournis `conversationId` et `audioPath`. Utilise de préférence un fichier `.ogg` mono encodé Opus pour obtenir le rendu natif « note vocale » de Telegram ; `text` est une légende/transcription facultative.
 
 > Le backend utilise un compte utilisateur MTProto, pas un bot. Les envois automatisés peuvent déclencher des limites anti-spam ou un bannissement : respecte les règles de Telegram et utilise un compte dédié si nécessaire.
@@ -162,7 +162,7 @@ SNAPCHAT_CLIENT=telegram npm start
 2. Connecte le téléphone (USB, ou `adb pair` + `adb connect` en Wi-Fi)
 3. Ouvre Snapchat sur le téléphone et connecte-toi **une fois** manuellement
 4. Garde l'écran déverrouillé, Snapchat en arrière-plan
-5. `adb devices` doit lister ton téléphone → puis `SNAPCHAT_CLIENT=adb npm start`
+5. `adb devices` doit lister ton téléphone → puis `SNAPCHAT_CLIENT=adb npm run snapmcp`
 
 > Les notes vocales sont envoyées en maintenant réellement le bouton micro pendant la durée estimée du texte (~2,5 mots/s), puis en le relâchant. Le serveur ne génère pas lui-même l'audio : parle dans le micro du téléphone ou utilise une solution TTS/audio côté téléphone. `audioPath` n'est pas injecté directement dans le micro par ADB.
 

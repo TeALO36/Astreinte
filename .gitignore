@@ -1,9 +1,22 @@
+# Dépendances
 node_modules/
+
+# Build généré par tsc : le dépôt ne contient que les sources TypeScript
 dist/
 *.tsbuildinfo
+
+# Données d'exécution et base de données locale (secrets potentiels)
+.freebuff/
+.data/
+*.db
+*.db-shm
+*.db-wal
+
+# Environnement
 .env
+.env.*
 .env.local
 
-# Browser/session state (contains authentication material — never commit)
+# Session browser/état d'authentification (ne jamais commiter)
 .snapmcp/
 .telegram/

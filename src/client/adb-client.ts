@@ -105,7 +105,7 @@ export class AdbSnapchatClient implements SnapchatClient {
     let m: RegExpExecArray | null;
     while ((m = re.exec(xml)) !== null) {
       const [, label, l, t, r, b] = m;
-      if (label && label.toLowerCase().includes(needle.toLowerCase())) {
+      if (label && l && t && r && b && label.toLowerCase().includes(needle.toLowerCase())) {
         return { x: Math.round((+l + +r) / 2), y: Math.round((+t + +b) / 2) };
       }
     }
@@ -170,7 +170,7 @@ export class AdbSnapchatClient implements SnapchatClient {
     const re = /<node[^>]*text="([^"]+)"[^>]*bounds="(\[[^\]]+\]\[[^\]]+\])"/g;
     let m: RegExpExecArray | null;
     while ((m = re.exec(xml)) !== null) {
-      const name = m[1].trim();
+      const name = m[1]!.trim();
       if (name && name.length < 40 && !name.includes("Snap")) names.add(name);
     }
     return [...names].slice(0, _limit).map((n) => this.makeConversation(n));

@@ -1,0 +1,13 @@
+{
+  "name": "snap-astreinte",
+  "version": "0.1.0",
+  "description": "Permanence technique automatisée : répond aux demandes d'aide IT avec un contexte isolé par interlocuteur et des notes vocales générées par TTS.",
+  "contextFileName": "GEMINI.md",
+  "mcpServers": {
+    "snap-astreinte": {
+      "command": "node",
+      "args": ["${extensionPath}${/}dist${/}index.js", "mcp"],
+      "cwd": "${extensionPath}"
+    }
+  }
+}

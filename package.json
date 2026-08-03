@@ -1,18 +1,43 @@
 {
-  "name": "snapmcp",
-  "version": "1.0.0",
-  "description": "MCP server for controlling Snapchat or Telegram — messages, voice notes, calls, and conversations",
+  "name": "snap-astreinte",
+  "version": "0.1.0",
+  "description": "Permanence technique automatisée : répond aux demandes d'aide IT sur le canal de votre choix, avec un contexte isolé par interlocuteur et des notes vocales générées par TTS. Inclut SnapMCP, un serveur MCP pour contrôler Snapchat ou Telegram (messages, médias, notes vocales, appels).",
+  "license": "MIT",
   "type": "module",
-  "main": "dist/index.js",
-  "scripts": {
-    "dev": "tsx watch src/index.ts",
-    "build": "tsc",
-    "start": "node dist/index.js",
-    "typecheck": "tsc --noEmit",
-    "test": "node scripts/smoke-test.mjs",
-    "telegram:login": "node scripts/telegram-login.mjs"
+  "bin": {
+    "snap-astreinte": "./dist/index.js"
   },
+  "main": "./dist/index.js",
+  "files": ["dist", "plugin.json", ".claude-plugin", "gemini-extension.json", "README.md"],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "typecheck": "tsc --noEmit",
+    "start": "node dist/index.js daemon",
+    "prepublishOnly": "npm run build",
+    "mcp": "node dist/index.js mcp",
+    "snapmcp": "node dist/snapmcp.js",
+    "smoke": "node scripts/smoke-test.mjs",
+    "telegram:login": "node scripts/telegram-login.mjs",
+    "test": "tsc && node --test --test-timeout=25000 --test-force-exit dist/snap-astreinte.test.js dist/e2e.test.js && node scripts/smoke-test.mjs",
+    "check": "node dist/index.js check"
+  },
+  "keywords": [
+    "mcp",
+    "modelcontextprotocol",
+    "claude-code-plugin",
+    "gemini-cli-extension",
+    "snapchat",
+    "telegram",
+    "support",
+    "helpdesk",
+    "tts"
+  ],
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
     "@modelcontextprotocol/server": "^2.0.0",
     "playwright": "^1.62.1",
     "telegram": "^2.26.22",
@@ -20,7 +45,6 @@
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
-    "tsx": "^4.19.0",
     "typescript": "^5.7.0"
   }
 }

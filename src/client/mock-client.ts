@@ -159,8 +159,8 @@ const mockConversations: Conversation[] = [
     type: "individual",
     displayName: "Emma Dubois",
     participants: ["me", "friend_1"],
-    lastMessage: mockMessages[2],
-    lastActivity: mockMessages[2].timestamp,
+    lastMessage: mockMessages[2]!,
+    lastActivity: mockMessages[2]!.timestamp,
     unreadCount: 1,
   },
   {
@@ -168,8 +168,8 @@ const mockConversations: Conversation[] = [
     type: "individual",
     displayName: "Léo Martin",
     participants: ["me", "friend_2"],
-    lastMessage: mockMessages[4],
-    lastActivity: mockMessages[4].timestamp,
+    lastMessage: mockMessages[4]!,
+    lastActivity: mockMessages[4]!.timestamp,
     unreadCount: 0,
   },
   {
@@ -177,8 +177,8 @@ const mockConversations: Conversation[] = [
     type: "individual",
     displayName: "Camille Petit",
     participants: ["me", "friend_3"],
-    lastMessage: mockMessages[5],
-    lastActivity: mockMessages[5].timestamp,
+    lastMessage: mockMessages[5]!,
+    lastActivity: mockMessages[5]!.timestamp,
     unreadCount: 0,
   },
   {
