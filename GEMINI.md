@@ -1,8 +1,10 @@
 # Astreinte
 
-Cette extension fait tourner une permanence technique automatisée : elle répond
-seule aux demandes d'aide informatique reçues sur un canal de messagerie, avec
-un contexte séparé par interlocuteur.
+Cette extension fait tourner un **persona** sur une messagerie : vous définissez
+un personnage (nom, personnalité, voix, garde-fous) et il répond seul aux
+messages reçus sur le canal choisi (Telegram ou Snapchat), avec un contexte
+séparé par interlocuteur. Exemple d'usage : un persona de vous-même qui gère
+vos demandes de support informatique, avec votre voix clonée en TTS.
 
 Le démon (`snap-astreinte daemon`) répond sans intervention. Les outils MCP exposés
 ici servent à **superviser** ce qu'il fait, pas à répondre à sa place :

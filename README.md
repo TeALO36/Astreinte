@@ -5,15 +5,20 @@
 [![Licence MIT](https://img.shields.io/badge/Licence-MIT-blue.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](package.json)
 
-Permanence technique automatisée. Les gens vous écrivent pour un dépannage
-informatique, Astreinte répond à leur place : un contexte séparé par
-interlocuteur, une personnalité que vous définissez, des garde-fous qui passent
-la main quand la demande vous dépasse — et des notes vocales quand on en
-demande une.
+Astreinte fait tourner un **persona** sur une messagerie. Vous définissez un
+personnage — son nom, sa personnalité, sa voix, ses garde-fous — et les gens
+discutent avec lui comme avec une personne : un contexte séparé par
+interlocuteur, des garde-fous qui lui font passer la main quand la demande
+dépasse ce qu'il doit traiter, et des notes vocales quand on en demande une.
+
+Exemple d'usage : un persona de vous-même qui répond à vos demandes de support
+informatique sur Telegram ou Snapchat, avec votre voix clonée en TTS. Mais le
+persona peut être n'importe qui : un assistant commercial, un prof, un
+personnage de fiction…
 
 Rien n'est propre à un canal ni à une application. C'est un serveur MCP qui
 tourne aussi bien sous Lochor, Claude Code ou Gemini CLI, et le canal de
-discussion est un driver interchangeable.
+discussion est un driver interchangeable : **Telegram ou Snapchat, au choix**.
 
 ## Installation
 
@@ -34,7 +39,7 @@ Puis renseignez la configuration (voir plus bas) et lancez :
 
 ```bash
 node dist/index.js check     # vérifie tout sans rien envoyer
-node dist/index.js daemon    # la permanence tourne
+node dist/index.js daemon    # le persona tourne
 ```
 
 ### Scripts disponibles
@@ -51,7 +56,7 @@ node dist/index.js daemon    # la permanence tourne
 
 | Commande | Rôle |
 |---|---|
-| `snap-astreinte daemon` | reçoit, décide, répond. C'est la permanence elle-même. |
+| `snap-astreinte daemon` | reçoit, décide, répond. C'est le persona qui répond. |
 | `snap-astreinte mcp` | serveur MCP de supervision, sur stdio. |
 | `snap-astreinte check` | teste le canal, le modèle et la synthèse vocale, sans rien envoyer. |
 

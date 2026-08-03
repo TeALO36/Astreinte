@@ -2,7 +2,7 @@
 /**
  * Point d'entrée. Deux modes :
  *
- *   snap-astreinte daemon   la permanence elle-même : reçoit, répond, envoie
+ *   snap-astreinte daemon   le persona lui-même : reçoit, répond, envoie
  *   snap-astreinte mcp      serveur MCP de supervision, sur stdio
  *   snap-astreinte check    vérifie la configuration sans rien envoyer
  *
@@ -52,7 +52,7 @@ async function daemon(): Promise<void> {
   }
 
   console.error(
-    `[snap-astreinte] permanence active — garde-fous ${cfg.bool("limits.enabled") ? "actifs" : "DÉSACTIVÉS"}` +
+    `[snap-astreinte] persona actif — garde-fous ${cfg.bool("limits.enabled") ? "actifs" : "DÉSACTIVÉS"}` +
       `, voix ${cfg.str("voice.mode")}`,
   );
 
@@ -111,7 +111,7 @@ async function check(): Promise<void> {
     lines.push(`Voix         : indisponible (mode ${tts.mode})`);
   } else {
     try {
-      const clip = await tts.synthesize("Test de la permanence.");
+      const clip = await tts.synthesize("Test du persona.");
       lines.push(`Voix         : ${clip.audio.length} octets en ${clip.mimeType}`);
     } catch (e) {
       lines.push(`Voix         : PROBLÈME — ${(e as Error).message}`);
@@ -137,7 +137,7 @@ switch (mode) {
   default:
     console.error(
       [
-        "Astreinte — permanence technique automatisée",
+        "Astreinte — persona de messagerie",
         "",
         "  snap-astreinte daemon   reçoit et répond en continu",
         "  snap-astreinte mcp      serveur MCP de supervision (stdio)",

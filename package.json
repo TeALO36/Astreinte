@@ -1,7 +1,7 @@
 {
   "name": "snap-astreinte",
   "version": "0.1.0",
-  "description": "Permanence technique automatisée : répond aux demandes d'aide IT sur le canal de votre choix, avec un contexte isolé par interlocuteur et des notes vocales générées par TTS. Inclut SnapMCP, un serveur MCP pour contrôler Snapchat ou Telegram (messages, médias, notes vocales, appels).",
+  "description": "Persona de messagerie : vous définissez un personnage (nom, personnalité, voix, garde-fous) et il répond seul sur Telegram ou Snapchat, avec un contexte isolé par interlocuteur et des notes vocales générées par TTS. Inclut SnapMCP, un serveur MCP pour contrôler Snapchat ou Telegram (messages, médias, notes vocales, appels).",
   "license": "MIT",
   "type": "module",
   "bin": {
@@ -28,12 +28,12 @@
   "keywords": [
     "mcp",
     "modelcontextprotocol",
+    "persona",
+    "chatbot",
     "claude-code-plugin",
     "gemini-cli-extension",
     "snapchat",
     "telegram",
-    "support",
-    "helpdesk",
     "tts"
   ],
   "dependencies": {

@@ -3,10 +3,10 @@
   "apiVersion": "0.1",
   "name": "snap-astreinte",
   "version": "0.1.0",
-  "description": "Permanence technique automatisée : répond aux demandes d'aide IT avec un contexte isolé par interlocuteur, une personnalité configurable et des notes vocales générées par TTS.",
+  "description": "Persona de messagerie : vous définissez un personnage (nom, personnalité, voix, garde-fous) et il répond seul sur Telegram ou Snapchat, avec un contexte isolé par interlocuteur et des notes vocales générées par TTS.",
   "author": "Teano",
   "license": "MIT",
-  "keywords": ["support", "helpdesk", "tts", "mcp", "automation"],
+  "keywords": ["persona", "chatbot", "tts", "mcp", "messaging"],
   "permissions": {
     "network": {
       "reason": "Recevoir et envoyer les messages sur le canal configuré, et appeler le LLM et le TTS",
@@ -34,7 +34,7 @@
         "type": "text",
         "title": "Personnalité et ton",
         "description": "Décrivez librement comment il doit se comporter et s'exprimer. C'est ce texte qui devient son instruction principale.",
-        "default": "Tu réponds à des demandes d'aide informatique. Ton direct et concret, sans jargon inutile. Tu vas droit à la solution, étape par étape, et tu demandes une précision quand la question est ambiguë plutôt que de deviner.",
+        "default": "Tu es un assistant chaleureux et efficace. Réponse directe et concrète, sans jargon inutile. Tu vas droit au but, étape par étape, et tu demandes une précision quand la question est ambiguë plutôt que de deviner.",
         "group": "Personnalité"
       },
       "persona.language": {
@@ -63,7 +63,7 @@
       "limits.scope": {
         "type": "text",
         "title": "Ce qu'il a le droit de traiter",
-        "default": "Dépannage informatique courant : Windows, macOS, Android, iOS, réseau domestique, navigateurs, comptes et mots de passe oubliés, imprimantes, lenteurs, virus supposés, installation de logiciels.",
+        "default": "Demandes d'aide que le persona est habilité à traiter. Personnalisez selon votre usage (ex. dépannage informatique, questions commerciales, cours…).",
         "group": "Garde-fous"
       },
       "limits.forbidden": {

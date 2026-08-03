@@ -51,7 +51,7 @@ export async function runMcpServer(): Promise<void> {
       {
         name: "snap_status",
         description:
-          "État de la permanence : canal configuré, garde-fous actifs, plage horaire, nombre de conversations, escalades en attente.",
+          "État du persona : canal configuré, garde-fous actifs, plage horaire, nombre de conversations, escalades en attente.",
         inputSchema: { type: "object", properties: {} },
       },
       {
