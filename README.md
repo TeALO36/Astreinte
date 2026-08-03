@@ -12,8 +12,12 @@ discussion est un driver interchangeable.
 
 ## Installation
 
+Le dépôt ne contient que les sources TypeScript (`src/`) : `dist/` est un
+artefact de build généré par `tsc`, ignoré par git et absent du dépôt. Après
+un clone :
+
 ```bash
-npm install
+npm ci
 npm run build
 ```
 
@@ -23,6 +27,16 @@ Puis renseignez la configuration (voir plus bas) et lancez :
 node dist/index.js check     # vérifie tout sans rien envoyer
 node dist/index.js daemon    # la permanence tourne
 ```
+
+### Scripts disponibles
+
+| Commande | Rôle |
+|---|---|
+| `npm run build` | compile `src/` vers `dist/` (`tsc`). À lancer avant toute utilisation. |
+| `npm run typecheck` | vérifie les types sans émettre de fichiers (`tsc --noEmit`). |
+| `npm run test` | compile puis lance les deux suites de tests (`dist/*.test.js`). |
+| `npm run dev` | recompile en continu pendant le développement (`tsc --watch`). |
+| `npm run start` | lance le démon depuis `dist/` (`node dist/index.js daemon`). |
 
 ## Les deux modes
 

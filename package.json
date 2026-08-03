@@ -17,6 +17,7 @@
     "dev": "tsc --watch",
     "typecheck": "tsc --noEmit",
     "start": "node dist/index.js daemon",
+    "prepublishOnly": "npm run build",
     "mcp": "node dist/index.js mcp",
     "test": "tsc && node --test --test-timeout=25000 --test-force-exit dist/snap-astreinte.test.js dist/e2e.test.js",
     "check": "node dist/index.js check"

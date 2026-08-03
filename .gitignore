@@ -1,6 +1,9 @@
 # Dépendances
 node_modules/
 
+# Build généré par tsc : le dépôt ne contient que les sources TypeScript
+dist/
+
 # Données d'exécution et base de données locale (secrets potentiels)
 .freebuff/
 .data/
