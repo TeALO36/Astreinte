@@ -3,6 +3,7 @@ node_modules/
 
 # Build généré par tsc : le dépôt ne contient que les sources TypeScript
 dist/
+*.tsbuildinfo
 
 # Données d'exécution et base de données locale (secrets potentiels)
 .freebuff/
@@ -14,3 +15,8 @@ dist/
 # Environnement
 .env
 .env.*
+.env.local
+
+# Session browser/état d'authentification (ne jamais commiter)
+.snapmcp/
+.telegram/

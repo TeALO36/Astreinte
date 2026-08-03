@@ -17,6 +17,10 @@ discussion est un driver interchangeable.
 
 ## Installation
 
+> Le dépôt contient aussi **SnapMCP**, un serveur MCP pour contrôler
+> Snapchat ou Telegram (messages, médias, notes vocales, appels) : voir
+> [`SNAPMCP.md`](SNAPMCP.md) et [`docs/API.md`](docs/API.md).
+
 Le dépôt ne contient que les sources TypeScript (`src/`) : `dist/` est un
 artefact de build généré par `tsc`, ignoré par git et absent du dépôt. Après
 un clone :

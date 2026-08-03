@@ -20,6 +20,8 @@ jobs:
 
       - name: Installation des dépendances
         run: npm ci
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
 
       - name: Tests
         run: npm test
