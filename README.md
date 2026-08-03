@@ -1,5 +1,10 @@
 # Astreinte
 
+[![Build](https://github.com/TeALO36/SnapMCP/actions/workflows/build.yml/badge.svg)](https://github.com/TeALO36/SnapMCP/actions/workflows/build.yml)
+[![Tests](https://github.com/TeALO36/SnapMCP/actions/workflows/test.yml/badge.svg)](https://github.com/TeALO36/SnapMCP/actions/workflows/test.yml)
+[![Licence MIT](https://img.shields.io/badge/Licence-MIT-blue.svg)](LICENSE)
+[![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](package.json)
+
 Permanence technique automatisée. Les gens vous écrivent pour un dépannage
 informatique, Astreinte répond à leur place : un contexte séparé par
 interlocuteur, une personnalité que vous définissez, des garde-fous qui passent
