@@ -8,7 +8,7 @@
     "snap-astreinte": "./dist/index.js"
   },
   "main": "./dist/index.js",
-  "files": ["dist", "plugin.json", ".claude-plugin", "gemini-extension.json", "README.md"],
+  "files": ["dist", "scripts", "Lancer-Banc-SnapMCP.bat", "plugin.json", ".claude-plugin", "gemini-extension.json", "README.md"],
   "engines": {
     "node": ">=20"
   },
@@ -20,6 +20,7 @@
     "prepublishOnly": "npm run build",
     "mcp": "node dist/index.js mcp",
     "snapmcp": "node dist/snapmcp.js",
+    "test-bench": "node scripts/test-bench-app.mjs",
     "smoke": "node scripts/smoke-test.mjs",
     "telegram:login": "node scripts/telegram-login.mjs",
     "test": "tsc && node --test --test-timeout=25000 --test-force-exit dist/snap-astreinte.test.js dist/e2e.test.js dist/client-adapter.test.js && node scripts/smoke-test.mjs",
