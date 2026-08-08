@@ -77,9 +77,11 @@ aucune ne peut dériver de l'autre.
 
 Les valeurs sont stockées dans `$SNAP_ASTREINTE_HOME/config.json`
 (`~/.astreinte/` par défaut). Les secrets peuvent rester hors du fichier via
-l'environnement : `SNAP_ASTREINTE_TELEGRAM_TOKEN`, `SNAP_ASTREINTE_LLM_API_KEY`.
+l'environnement : `SNAP_ASTREINTE_TELEGRAM_API_ID`,
+`SNAP_ASTREINTE_TELEGRAM_API_HASH`, `SNAP_ASTREINTE_TELEGRAM_SESSION_FILE`,
+`SNAP_ASTREINTE_LLM_API_KEY`.
 
-Six groupes : **Personnalité**, **Garde-fous**, **Voix**, **Modèle**, **Canal**,
+Sept groupes : **Personnalité**, **Garde-fous**, **Voix**, **Modèle**, **Canal**,
 **Alertes**, **Contexte**.
 
 ### Le mode sans limite
@@ -108,11 +110,46 @@ Un canal est un driver qui implémente `Transport` (`src/transports/types.ts`) :
 `start`, `stop`, `sendText`, `sendVoice`. Rien d'autre dans l'extension ne sait
 sur quel canal elle tourne.
 
-### Telegram
+### Telegram — votre compte personnel, pas un bot
 
-API officielle, notes vocales natives. Créez un bot auprès de
-[@BotFather](https://t.me/BotFather), collez le jeton dans
-`transport.telegram_token`, choisissez `transport.driver = telegram`.
+Aucun jeton de bot, aucune API officielle, aucun intermédiaire : le canal parle
+via **votre compte Telegram personnel**, par MTProto (GramJS). Le compte
+apparaît comme un compte utilisateur normal — jamais avec le badge « bot » — et
+peut lire et répondre dans vos conversations réelles.
+
+Mise en place en deux étapes, une seule fois :
+
+1. Créez vos identifiants sur **https://my.telegram.org** → « API development
+   tools » : notez `api_id` et `api_hash`.
+2. Lancez la connexion interactive : `npm run telegram:login`. Vous entrez
+   votre numéro, le code reçu dans Telegram (et le mot de passe 2FA s'il est
+   activé) ; la session est écrite dans `.telegram/session.txt` et ne doit
+   jamais être commitée.
+
+Puis renseignez dans la configuration du canal :
+
+- `transport.telegram_api_id` — l'identifiant de l'étape 1,
+- `transport.telegram_api_hash` — la clé de l'étape 1,
+- `transport.telegram_session_file` — le fichier de session (défaut
+  `.telegram/session.txt`),
+- `transport.driver = telegram`.
+
+Ou passez les secrets par l'environnement (`SNAP_ASTREINTE_TELEGRAM_API_ID`,
+`SNAP_ASTREINTE_TELEGRAM_API_HASH`, `SNAP_ASTREINTE_TELEGRAM_SESSION_FILE`) pour
+les garder hors du fichier de config.
+
+> **Avertissements**
+>
+> - Un auto-répondeur piloté par un **compte personnel** est un « userbot » :
+>   c'est toléré pour un usage privé, mais contraire aux conditions
+>   d'utilisation de Telegram. Utilisez de préférence un **compte secondaire**
+>   dédié ; le risque de restriction existe même avec votre propre compte.
+> - `.telegram/session.txt` est une **clé d'authentification complète**
+>   (équivalente à un mot de passe) : ne la partagez jamais, ne la commitez
+>   jamais, et effacez-la si le compte est compromis.
+> - Au démarrage, les conversations non lues sont marquées comme lues après
+>   traitement : l'état de lecture peut donc changer dans votre application
+>   Telegram réelle (c'est ce qui évite de répondre deux fois au même message).
 
 Les notes vocales partent en OGG/Opus. Si votre moteur TTS produit du WAV,
 `ffmpeg` est utilisé pour convertir ; sans lui, l'envoi échoue franchement et la
@@ -166,6 +203,11 @@ elle part en texte, et la raison est journalisée.
 escalade et à chaque échec de réponse. Volontairement indépendant du canal des
 conversations : quand le canal principal est justement ce qui ne va pas, une
 alerte qui passe par lui n'arrive jamais.
+
+Les alertes partent du **même compte personnel** que le canal (aucun bot à
+créer). Dans `notify.telegram_chat_id`, mettez `me` pour vos **Messages
+enregistrés** (recommandé : rien à chercher, tout arrive dans votre espace
+privé), un identifiant numérique, ou un `@pseudo`.
 
 ## Tests
 

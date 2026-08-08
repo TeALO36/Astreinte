@@ -27,7 +27,10 @@ export function createSnapchatClient(
     case "web":
       // SNAPCHAT_HEADLESS=0 → headed browser (first run: scan the QR code).
       // Unset or 1 → headless (after the session is saved).
-      return new WebSnapchatClient({ headless: env.SNAPCHAT_HEADLESS !== "0" });
+      return new WebSnapchatClient({
+        headless: env.SNAPCHAT_HEADLESS !== "0",
+        stateFile: env.SNAPCHAT_STATE_FILE,
+      });
     case "adb":
       return new AdbSnapchatClient({ serial: env.ADB_SERIAL });
     case "telegram":

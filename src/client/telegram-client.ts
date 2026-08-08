@@ -1,16 +1,16 @@
 /**
  * SnapMCP — Telegram client (MTProto user account)
  *
- * Uses GramJS to control a personal Telegram account. Unlike the Bot API,
- * MTProto can access the user's own dialogs and send real voice notes.
- * Authentication is deliberately completed by scripts/telegram-login.mjs so
- * the MCP stdio transport is never blocked waiting for a phone code.
+ * Uses GramJS to control a personal Telegram account. The account appears as a
+ * normal user. Authentication is completed by scripts/telegram-login.mjs so
+ * the MCP stdio transport never waits for a phone code.
  */
 
-import { TelegramClient as GramJsTelegramClient, sessions } from "telegram";
-
-const { StringSession } = sessions;
-import { existsSync, readFileSync } from "node:fs";
+import { randomBytes } from "node:crypto";
+import { existsSync, readFileSync, statSync } from "node:fs";
+import path from "node:path";
+import { Api, TelegramClient as GramJsTelegramClient, helpers, sessions } from "telegram";
+import { CustomFile } from "telegram/client/uploads.js";
 import type {
   Conversation,
   Friend,
@@ -22,8 +22,14 @@ import type {
   VoiceCall,
   VoiceCallParams,
 } from "./types.js";
+import { toOpus } from "../audio/opus.js";
+import {
+  loadSessionString,
+  resolveTelegramSession,
+  type ResolvedTelegramSession,
+} from "../telegram/session.js";
 
-const DEFAULT_SESSION_FILE = ".telegram/session.txt";
+const { StringSession } = sessions;
 
 type TelegramEntity = {
   className?: string;
@@ -74,51 +80,28 @@ export interface TelegramClientConfig {
   connectionRetries?: number;
 }
 
+const TELEGRAM_VIEW_ONCE_TTL = 0x7fffffff;
+
 export class TelegramSnapchatClient implements SnapchatClient {
-  private readonly apiId: number;
-  private readonly apiHash: string;
-  private readonly sessionString?: string;
-  private readonly sessionFile: string;
+  private readonly session: ResolvedTelegramSession;
   private readonly connectionRetries: number;
   private client: GramJsTelegramClient | null = null;
 
   constructor(config: TelegramClientConfig = {}) {
-    const apiId = config.apiId ?? Number(process.env.TELEGRAM_API_ID ?? "");
-    const apiHash = config.apiHash ?? process.env.TELEGRAM_API_HASH;
-    if (!Number.isInteger(apiId) || apiId <= 0) {
-      throw new Error(
-        "TELEGRAM_API_ID is required for a Telegram user account. Create it at my.telegram.org.",
-      );
-    }
-    if (!apiHash) {
-      throw new Error(
-        "TELEGRAM_API_HASH is required for a Telegram user account. Create it at my.telegram.org.",
-      );
-    }
-
-    this.apiId = apiId;
-    this.apiHash = apiHash;
-    this.sessionString = config.sessionString ?? process.env.TELEGRAM_SESSION_STRING;
-    this.sessionFile = config.sessionFile ?? process.env.TELEGRAM_SESSION_FILE ?? DEFAULT_SESSION_FILE;
+    this.session = resolveTelegramSession(config);
     this.connectionRetries = config.connectionRetries ?? 5;
   }
 
   private loadSession(): string {
-    if (this.sessionString) return this.sessionString.trim();
-    if (existsSync(this.sessionFile)) return readFileSync(this.sessionFile, "utf8").trim();
-    throw new Error(
-      `No Telegram session found. Run \"npm run telegram:login\" once, then start the MCP server again. ` +
-        `The session is stored in ${this.sessionFile} and must never be committed.`,
-    );
+    return loadSessionString(this.session);
   }
 
   private async ensureClient(): Promise<GramJsTelegramClient> {
     if (this.client) return this.client;
-
     const client = new GramJsTelegramClient(
       new StringSession(this.loadSession()),
-      this.apiId,
-      this.apiHash,
+      this.session.apiId,
+      this.session.apiHash,
       { connectionRetries: this.connectionRetries },
     );
     await client.connect();
@@ -139,8 +122,7 @@ export class TelegramSnapchatClient implements SnapchatClient {
   }
 
   private entityId(entity?: TelegramEntity): string | undefined {
-    if (!entity?.id) return undefined;
-    return String(entity.id);
+    return entity?.id ? String(entity.id) : undefined;
   }
 
   private conversationId(dialog: TelegramDialog): string {
@@ -179,9 +161,7 @@ export class TelegramSnapchatClient implements SnapchatClient {
       text: text || undefined,
       mediaUrl: type === "text" ? undefined : `telegram://message/${id}`,
       duration: this.messageDuration(item),
-      timestamp: item.date
-        ? new Date(item.date * 1000).toISOString()
-        : new Date().toISOString(),
+      timestamp: item.date ? new Date(item.date * 1000).toISOString() : new Date().toISOString(),
       status: item.out ? "sent" : "opened",
       saved: true,
     };
@@ -201,7 +181,6 @@ export class TelegramSnapchatClient implements SnapchatClient {
   }
 
   private async resolve(client: GramJsTelegramClient, conversationId: string): Promise<string> {
-    // A username, marked ID, or a cached dialog ID are all accepted by GramJS.
     await client.getInputEntity(conversationId);
     return conversationId;
   }
@@ -219,7 +198,6 @@ export class TelegramSnapchatClient implements SnapchatClient {
     const conversations = await this.getConversations(100);
     const known = conversations.find((item) => item.id === conversationId);
     if (known) return known;
-
     const client = await this.ensureClient();
     const entity = (await client.getEntity(conversationId)) as TelegramEntity;
     return {
@@ -249,19 +227,91 @@ export class TelegramSnapchatClient implements SnapchatClient {
     return this.mapMessage(sent, params.conversationId);
   }
 
-  async sendSnap(params: SendSnapParams): Promise<Message> {
-    const client = await this.ensureClient();
-    const entity = await this.resolve(client, params.conversationId);
-    const sent = await client.sendFile(entity, {
-      file: params.mediaUrl,
-      caption: params.caption,
-      supportsStreaming: params.type === "video",
+  private async uploadForRawMedia(source: string): Promise<CustomFile> {
+    if (/^https?:\/\//i.test(source)) {
+      const response = await fetch(source);
+      if (!response.ok) throw new Error(`Téléchargement média refusé (${response.status}).`);
+      const buffer = Buffer.from(await response.arrayBuffer());
+      if (buffer.length === 0) throw new Error("Le média téléchargé est vide.");
+      return new CustomFile("snapmcp-photo.jpg", buffer.length, "", buffer);
+    }
+    if (!existsSync(source)) throw new Error(`Fichier média introuvable : ${source}`);
+    const buffer = readFileSync(source);
+    return new CustomFile(path.basename(source), statSync(source).size, "", buffer);
+  }
+
+  private async sendEphemeralPhoto(
+    client: GramJsTelegramClient,
+    conversationId: string,
+    mediaUrl: string,
+    caption: string | undefined,
+    ttlSeconds: number,
+  ): Promise<unknown> {
+    const entity = (await client.getEntity(conversationId)) as TelegramEntity;
+    if (entity.className !== "User") {
+      throw new Error("Telegram ne permet les photos éphémères que dans une conversation privée.");
+    }
+    const peer = await client.getInputEntity(conversationId);
+    const uploaded = await client.uploadFile({
+      file: await this.uploadForRawMedia(mediaUrl),
+      workers: 1,
     });
+    const media = new Api.InputMediaUploadedPhoto({ file: uploaded, ttlSeconds });
+    const request = new Api.messages.SendMedia({
+      peer,
+      media,
+      message: caption ?? "",
+      randomId: helpers.readBigIntFromBuffer(randomBytes(8)),
+    });
+    const response = await client.invoke(request);
+    return client._getResponseMessage(request, response, peer);
+  }
+
+  async sendSnap(params: SendSnapParams): Promise<Message> {
+    const visibility = params.visibility ?? "saved";
+    if (visibility === "view_once_replay") {
+      throw new Error(
+        "Telegram MTProto expose le mode conservé, 10 secondes et vue unique. Le mode « revoir une fois » n'est pas représenté par son API actuelle.",
+      );
+    }
+    if (visibility !== "saved" && params.type !== "image") {
+      throw new Error("Les modes éphémères Telegram sont limités aux photos, pas aux vidéos.");
+    }
+
+    const client = await this.ensureClient();
+    let sent: unknown;
+    if (visibility === "timed_10s" || visibility === "view_once") {
+      sent = await this.sendEphemeralPhoto(
+        client,
+        params.conversationId,
+        params.mediaUrl,
+        params.caption,
+        visibility === "timed_10s" ? 10 : TELEGRAM_VIEW_ONCE_TTL,
+      );
+    } else {
+      const entity = await this.resolve(client, params.conversationId);
+      sent = await client.sendFile(entity, {
+        file: params.mediaUrl,
+        caption: params.caption,
+        supportsStreaming: params.type === "video",
+      });
+    }
     return this.mapMessage(sent, params.conversationId);
   }
 
+  private async prepareVoiceFile(source: string): Promise<string | CustomFile> {
+    if (/\.(?:ogg|opus)$/i.test(source)) return source;
+    if (!existsSync(source)) throw new Error(`Fichier vocal introuvable : ${source}`);
+    const input = readFileSync(source);
+    if (input.length === 0) throw new Error("Le fichier vocal est vide.");
+    const converted = await toOpus(input);
+    const name = `${path.basename(source, path.extname(source))}.ogg`;
+    return new CustomFile(name, converted.length, "", converted);
+  }
+
   async sendVoiceNote(params: SendVoiceNoteParams): Promise<Message> {
-    if (!params.audioPath) {
+    const audioPath = params.audioPath;
+    if (!audioPath) {
       throw new Error(
         "Telegram voice notes require audioPath. Generate or record an audio file first; text is optional caption/transcript only.",
       );
@@ -269,7 +319,7 @@ export class TelegramSnapchatClient implements SnapchatClient {
     const client = await this.ensureClient();
     const entity = await this.resolve(client, params.conversationId);
     const sent = await client.sendFile(entity, {
-      file: params.audioPath,
+      file: await this.prepareVoiceFile(audioPath),
       voiceNote: true,
       caption: params.text,
     });

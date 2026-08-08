@@ -6,7 +6,13 @@
   "description": "Persona de messagerie : vous définissez un personnage (nom, personnalité, voix, garde-fous) et il répond seul sur Telegram ou Snapchat, avec un contexte isolé par interlocuteur et des notes vocales générées par TTS.",
   "author": "Teano",
   "license": "MIT",
-  "keywords": ["persona", "chatbot", "tts", "mcp", "messaging"],
+  "keywords": [
+    "persona",
+    "chatbot",
+    "tts",
+    "mcp",
+    "messaging"
+  ],
   "permissions": {
     "network": {
       "reason": "Recevoir et envoyer les messages sur le canal configuré, et appeler le LLM et le TTS",
@@ -16,7 +22,12 @@
       "reason": "Lancer la commande TTS locale quand la synthèse vocale est en mode commande",
       "scope": "always"
     },
-    "env": ["SNAP_ASTREINTE_TELEGRAM_TOKEN", "SNAP_ASTREINTE_LLM_API_KEY"]
+    "env": [
+      "SNAP_ASTREINTE_TELEGRAM_API_ID",
+      "SNAP_ASTREINTE_TELEGRAM_API_HASH",
+      "SNAP_ASTREINTE_TELEGRAM_SESSION_FILE",
+      "SNAP_ASTREINTE_LLM_API_KEY"
+    ]
   },
   "components": {
     "mcp": "mcp/mcp.json"
@@ -40,8 +51,16 @@
       "persona.language": {
         "type": "select",
         "title": "Langue des réponses",
-        "options": ["auto", "fr", "en"],
-        "optionLabels": ["Celle du message reçu", "Français", "Anglais"],
+        "options": [
+          "auto",
+          "fr",
+          "en"
+        ],
+        "optionLabels": [
+          "Celle du message reçu",
+          "Français",
+          "Anglais"
+        ],
         "default": "auto",
         "group": "Personnalité"
       },
@@ -52,7 +71,6 @@
         "default": true,
         "group": "Personnalité"
       },
-
       "limits.enabled": {
         "type": "boolean",
         "title": "Activer les garde-fous",
@@ -94,7 +112,15 @@
       "limits.escalation_keywords": {
         "type": "list",
         "title": "Mots déclenchant une escalade immédiate",
-        "default": ["urgent", "urgence", "plainte", "avocat", "facture", "remboursement", "données perdues"],
+        "default": [
+          "urgent",
+          "urgence",
+          "plainte",
+          "avocat",
+          "facture",
+          "remboursement",
+          "données perdues"
+        ],
         "group": "Garde-fous"
       },
       "limits.escalation_message": {
@@ -110,12 +136,19 @@
         "default": "",
         "group": "Garde-fous"
       },
-
       "voice.mode": {
         "type": "select",
         "title": "Notes vocales",
-        "options": ["on_request", "always", "never"],
-        "optionLabels": ["Quand on en demande une", "Toujours répondre en vocal", "Jamais"],
+        "options": [
+          "on_request",
+          "always",
+          "never"
+        ],
+        "optionLabels": [
+          "Quand on en demande une",
+          "Toujours répondre en vocal",
+          "Jamais"
+        ],
         "description": "En mode « à la demande », il détecte les formulations du type « tu peux me faire un vocal ».",
         "default": "on_request",
         "group": "Voix"
@@ -132,8 +165,16 @@
       "voice.tts_mode": {
         "type": "select",
         "title": "Moteur de synthèse",
-        "options": ["http", "command", "disabled"],
-        "optionLabels": ["Serveur HTTP compatible OpenAI", "Commande locale", "Désactivé"],
+        "options": [
+          "http",
+          "command",
+          "disabled"
+        ],
+        "optionLabels": [
+          "Serveur HTTP compatible OpenAI",
+          "Commande locale",
+          "Désactivé"
+        ],
         "default": "http",
         "group": "Voix"
       },
@@ -171,7 +212,6 @@
         "default": "",
         "group": "Voix"
       },
-
       "llm.base_url": {
         "type": "string",
         "title": "Endpoint du modèle",
@@ -210,20 +250,66 @@
         "max": 600000,
         "group": "Modèle"
       },
-
       "transport.driver": {
         "type": "select",
         "title": "Canal",
-        "options": ["telegram", "snapchat"],
-        "optionLabels": ["Telegram", "Snapchat (driver à fournir)"],
+        "options": [
+          "telegram",
+          "snapchat"
+        ],
+        "optionLabels": [
+          "Telegram",
+          "Snapchat (driver à fournir)"
+        ],
         "default": "telegram",
         "group": "Canal"
       },
-      "transport.telegram_token": {
-        "type": "secret",
-        "title": "Jeton du bot Telegram",
-        "description": "Obtenu auprès de @BotFather. Peut aussi venir de la variable SNAP_ASTREINTE_TELEGRAM_TOKEN.",
+      "transport.snapchat_client": {
+        "type": "select",
+        "title": "Backend Snapchat",
+        "description": "Comment le compte est piloté. « adb » passe par un téléphone ou un émulateur Android et sait envoyer des notes vocales ; « web » passe par web.snapchat.com et n'en envoie pas ; « pont externe » délègue à un processus que vous fournissez.",
+        "options": [
+          "adb",
+          "web",
+          "mock",
+          "bridge"
+        ],
+        "optionLabels": [
+          "Android via adb",
+          "Snapchat Web",
+          "Client factice (test)",
+          "Pont externe"
+        ],
+        "default": "adb",
+        "group": "Canal"
+      },
+      "transport.adb_serial": {
+        "type": "string",
+        "title": "Appareil adb",
+        "description": "Numéro de série renvoyé par « adb devices ». Vide = le seul appareil connecté.",
         "default": "",
+        "group": "Canal"
+      },
+      "transport.telegram_api_id": {
+        "type": "number",
+        "title": "Identifiant API (api_id)",
+        "description": "Votre compte Telegram personnel : créez api_id/api_hash sur https://my.telegram.org, puis lancez « npm run telegram:login ». Aucun bot, aucune API officielle.",
+        "default": 0,
+        "min": 1,
+        "group": "Canal"
+      },
+      "transport.telegram_api_hash": {
+        "type": "secret",
+        "title": "Clé API (api_hash)",
+        "description": "Obtenue sur https://my.telegram.org avec l'api_id. Peut aussi venir de la variable SNAP_ASTREINTE_TELEGRAM_API_HASH.",
+        "default": "",
+        "group": "Canal"
+      },
+      "transport.telegram_session_file": {
+        "type": "string",
+        "title": "Fichier de session",
+        "description": "Créé par « npm run telegram:login ». Défaut : .telegram/session.txt. Peut aussi venir de la variable SNAP_ASTREINTE_TELEGRAM_SESSION_FILE.",
+        "default": ".telegram/session.txt",
         "group": "Canal"
       },
       "transport.bridge_url": {
@@ -240,35 +326,18 @@
         "default": "",
         "group": "Canal"
       },
-      "transport.poll_interval_ms": {
-        "type": "number",
-        "title": "Intervalle de relève",
-        "description": "En millisecondes.",
-        "default": 2000,
-        "min": 500,
-        "max": 60000,
-        "group": "Canal"
-      },
-
       "notify.enabled": {
         "type": "boolean",
         "title": "Me prévenir sur Telegram",
-        "description": "Envoie une alerte à l'exploitant de l'extension quand une demande est escaladée ou qu'une erreur bloque une réponse. Indépendant du canal sur lequel tournent les conversations.",
+        "description": "Envoie une alerte à l'exploitant de l'extension quand une demande est escaladée ou qu'une erreur bloque une réponse. Indépendant du canal sur lequel tournent les conversations. Utilise le même compte personnel que le canal.",
         "default": false,
-        "group": "Alertes"
-      },
-      "notify.telegram_token": {
-        "type": "secret",
-        "title": "Jeton du bot d'alerte",
-        "description": "Peut être le même bot que le canal, ou un bot dédié.",
-        "default": "",
         "group": "Alertes"
       },
       "notify.telegram_chat_id": {
         "type": "string",
-        "title": "Votre identifiant de conversation",
-        "description": "Écrivez une fois à votre bot, puis relevez l'id via getUpdates.",
-        "default": "",
+        "title": "Où envoyer les alertes",
+        "description": "« me » pour vos Messages enregistrés (recommandé), un identifiant numérique, ou un @pseudo.",
+        "default": "me",
         "group": "Alertes"
       },
       "notify.on_escalation": {
@@ -283,7 +352,6 @@
         "default": true,
         "group": "Alertes"
       },
-
       "context.max_history_turns": {
         "type": "number",
         "title": "Tours conservés par interlocuteur",

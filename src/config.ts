@@ -44,7 +44,9 @@ export type ConfigValues = Record<string, unknown>;
 
 /** Réglages lisibles depuis l'environnement, pour garder les secrets dehors. */
 const ENV_OVERRIDES: Record<string, string> = {
-  "transport.telegram_token": "SNAP_ASTREINTE_TELEGRAM_TOKEN",
+  "transport.telegram_api_id": "SNAP_ASTREINTE_TELEGRAM_API_ID",
+  "transport.telegram_api_hash": "SNAP_ASTREINTE_TELEGRAM_API_HASH",
+  "transport.telegram_session_file": "SNAP_ASTREINTE_TELEGRAM_SESSION_FILE",
   "llm.api_key": "SNAP_ASTREINTE_LLM_API_KEY",
   "llm.base_url": "SNAP_ASTREINTE_LLM_BASE_URL",
   "llm.model": "SNAP_ASTREINTE_LLM_MODEL",

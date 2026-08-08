@@ -2,24 +2,13 @@
  * SnapMCP — Web Client (Playwright)
  *
  * Real client that drives web.snapchat.com in a browser via Playwright.
- * Capabilities on Snapchat Web:
- *   ✅ Text messages, snaps (photo/video), media upload
- *   ✅ Voice & video CALLS (phone / video icon in chat) — where available
- *   ❌ Voice NOTES (audio messages) — NOT supported by Snapchat Web
- *
- * Setup:
- *   1. `npx playwright install chromium`
- *   2. First run: the client opens a headed browser — scan the QR code
- *      with Snapchat to log in. The session is saved to .snapmcp/state.json
- *      and reused afterwards (run headless after first login).
- *
- * NOTE: selectors for web.snapchat.com change often — if a selector
- * breaks, update it below and keep this file as the single place for
- * DOM integration.
+ * The first run opens a visible Chromium window so the user can scan the QR
+ * code. Once authenticated, storageState is saved and later runs are headless.
  */
 
 import { chromium, type Browser, type Page } from "playwright";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import path from "node:path";
 import type {
   Conversation,
@@ -31,23 +20,21 @@ import type {
   SendSnapParams,
   SendVoiceNoteParams,
   VoiceCallParams,
+  WebSessionStatus,
 } from "./types.js";
 
 const WEB_URL = "https://web.snapchat.com";
-const STATE_DIR = path.join(process.cwd(), ".snapmcp");
-const STATE_FILE = path.join(STATE_DIR, "state.json");
+const DATA_ROOT = process.env.SNAP_ASTREINTE_HOME?.trim()
+  ? path.resolve(process.env.SNAP_ASTREINTE_HOME)
+  : path.join(homedir(), ".snap-astreinte");
+const STATE_FILE = path.join(DATA_ROOT, ".snapmcp", "state.json");
 
 export interface WebClientConfig {
   headless?: boolean;
   stateFile?: string;
-  /** Timeout for page interactions in ms */
   timeoutMs?: number;
 }
 
-/**
- * Selectors — maintain these when Snapchat changes its web UI.
- * Text-based selectors are used where possible to reduce breakage.
- */
 const SELECTORS = {
   chatFeed: '[role="listitem"], [data-testid="chat-feed"]',
   messageInput: '[contenteditable="true"], textarea[placeholder*="message" i]',
@@ -62,6 +49,7 @@ export class WebSnapchatClient implements SnapchatClient {
   private readonly headless: boolean;
   private readonly stateFile: string;
   private readonly timeoutMs: number;
+  private browserVisible = false;
   private inProgressCall: VoiceCall | null = null;
 
   constructor(config: WebClientConfig = {}) {
@@ -70,40 +58,77 @@ export class WebSnapchatClient implements SnapchatClient {
     this.timeoutMs = config.timeoutMs ?? 30_000;
   }
 
-  // ── Lifecycle ──────────────────────────────────────────────────
-
-  /**
-   * Launch the browser, load the saved session (if any), and open
-   * web.snapchat.com. If not logged in, throws with login instructions.
-   */
-  private async ensurePage(): Promise<Page> {
+  private async launchPage(forceVisible = false): Promise<Page> {
+    if (forceVisible && this.page && !this.page.isClosed() && !this.browserVisible) {
+      await this.close();
+    }
     if (this.page && !this.page.isClosed()) return this.page;
 
+    const hasSavedSession = existsSync(this.stateFile);
+    this.browserVisible = forceVisible || !hasSavedSession;
     this.browser = await chromium.launch({
-      headless: this.headless,
+      // First login and the explicit login button must show the QR window.
+      headless: this.browserVisible ? false : this.headless,
       args: ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream"],
     });
 
     const context = await this.browser.newContext({
       permissions: ["microphone", "camera", "notifications"],
-      storageState: existsSync(this.stateFile) ? this.stateFile : undefined,
+      storageState: hasSavedSession ? this.stateFile : undefined,
     });
     this.page = await context.newPage();
     await this.page.goto(WEB_URL, { waitUntil: "domcontentloaded" });
+    return this.page;
+  }
 
-    // Wait for either the chat feed (logged in) or the login screen
-    try {
-      await this.page.waitForSelector('[role="listitem"], [aria-label="chat"]', {
-        timeout: 15_000,
-      });
-    } catch {
-      await this.saveSession();
+  private async isConnected(page: Page): Promise<boolean> {
+    const url = page.url();
+    if (/accounts\.snapchat\.com|\/login|\/auth/i.test(url)) return false;
+    return (await page.locator(SELECTORS.chatFeed).count()) > 0;
+  }
+
+  private async status(detailWhenDisconnected: string): Promise<WebSessionStatus> {
+    const page = this.page;
+    const connected = page ? await this.isConnected(page) : false;
+    if (connected) await this.saveSession();
+    return {
+      connected,
+      sessionSaved: existsSync(this.stateFile),
+      browserVisible: this.browserVisible,
+      stateFile: this.stateFile,
+      url: page?.url() ?? WEB_URL,
+      detail: connected
+        ? "Session Snapchat Web vérifiée. La session est enregistrée pour les prochains démarrages."
+        : detailWhenDisconnected,
+    };
+  }
+
+  private async ensurePage(): Promise<Page> {
+    const page = await this.launchPage();
+    if (!(await this.isConnected(page))) {
       throw new Error(
-        "Not logged in. Run once with headless:false (SNAPCHAT_HEADLESS=0), " +
-          "scan the QR code on web.snapchat.com, and re-run.",
+        "Snapchat Web attend une connexion. La fenêtre Chromium est ouverte : " +
+          "scanne le QR code, puis clique sur « Vérifier la connexion ».",
       );
     }
-    return this.page;
+    await this.saveSession();
+    return page;
+  }
+
+  /** Open a visible browser without waiting for login. The QR code is shown in Chromium. */
+  async openLogin(): Promise<WebSessionStatus> {
+    const page = await this.launchPage(true);
+    return this.status(
+      "Chromium est ouvert sur Snapchat Web. Scanne le QR code, termine la connexion, puis clique sur « Vérifier la connexion ».",
+    );
+  }
+
+  /** Verify the current browser/session and persist storageState after success. */
+  async getSessionStatus(): Promise<WebSessionStatus> {
+    const page = await this.launchPage();
+    return this.status(
+      `Connexion Snapchat Web non détectée (${page.url()}). Ouvre le bouton QR, termine la connexion, puis réessaie.`,
+    );
   }
 
   /** Persist browser session so subsequent runs skip the QR login. */
@@ -120,15 +145,11 @@ export class WebSnapchatClient implements SnapchatClient {
     await this.browser?.close();
     this.browser = null;
     this.page = null;
+    this.browserVisible = false;
   }
 
-  // ── Helpers ────────────────────────────────────────────────────
-
-  /** Open the chat with the given conversation (by name). */
   private async openChat(conversationId: string): Promise<void> {
     const page = await this.ensurePage();
-    // Conversations are listed in the left sidebar; click by visible name.
-    // conversationId for the web client is the friend/group display name.
     await page.getByText(conversationId, { exact: false }).first().click({
       timeout: this.timeoutMs,
     });
@@ -146,16 +167,15 @@ export class WebSnapchatClient implements SnapchatClient {
     };
   }
 
-  // ── Conversations ──────────────────────────────────────────────
-
-  async getConversations(_limit = 20): Promise<Conversation[]> {
+  async getConversations(limit = 20): Promise<Conversation[]> {
     const page = await this.ensurePage();
     const items = await page.locator(SELECTORS.chatFeed).all();
     const conversations: Conversation[] = [];
-    for (const item of items.slice(0, _limit)) {
+    for (const item of items.slice(0, limit)) {
       const name = (await item.textContent())?.trim();
       if (name) conversations.push(this.makeConversation(name, name));
     }
+    await this.saveSession();
     return conversations;
   }
 
@@ -163,12 +183,12 @@ export class WebSnapchatClient implements SnapchatClient {
     return this.makeConversation(conversationId, conversationId);
   }
 
-  async getMessages(conversationId: string, _limit = 50): Promise<Message[]> {
+  async getMessages(conversationId: string, limit = 50): Promise<Message[]> {
     await this.openChat(conversationId);
     const page = await this.ensurePage();
     const nodes = await page.locator('[data-testid="message"], [role="listitem"]').all();
     const messages: Message[] = [];
-    for (const node of nodes.slice(-_limit)) {
+    for (const node of nodes.slice(-limit)) {
       const text = (await node.textContent())?.trim();
       if (text) {
         messages.push({
@@ -186,8 +206,6 @@ export class WebSnapchatClient implements SnapchatClient {
     return messages;
   }
 
-  // ── Messaging ──────────────────────────────────────────────────
-
   async sendMessage(params: SendMessageParams): Promise<Message> {
     await this.openChat(params.conversationId);
     const page = await this.ensurePage();
@@ -195,6 +213,7 @@ export class WebSnapchatClient implements SnapchatClient {
     await page.keyboard.type(params.text, { delay: 25 });
     await page.keyboard.press("Enter");
     await page.waitForTimeout(500);
+    await this.saveSession();
     return {
       id: `web_msg_${Date.now()}`,
       conversationId: params.conversationId,
@@ -210,7 +229,6 @@ export class WebSnapchatClient implements SnapchatClient {
   async sendSnap(params: SendSnapParams): Promise<Message> {
     await this.openChat(params.conversationId);
     const page = await this.ensurePage();
-    // Snapchat Web accepts image uploads via drag & drop onto the chat.
     const input = page.locator('input[type="file"]');
     if ((await input.count()) > 0) {
       await input.first().setInputFiles(params.mediaUrl);
@@ -219,6 +237,7 @@ export class WebSnapchatClient implements SnapchatClient {
     } else {
       throw new Error("Media upload input not found — selectors may need updating");
     }
+    await this.saveSession();
     return {
       id: `web_snap_${Date.now()}`,
       conversationId: params.conversationId,
@@ -233,20 +252,15 @@ export class WebSnapchatClient implements SnapchatClient {
     };
   }
 
-  /** Voice notes are NOT supported on Snapchat Web — always throws. */
   async sendVoiceNote(_params: SendVoiceNoteParams): Promise<Message> {
     throw new Error(
-      "Voice notes (audio messages) are not supported on Snapchat Web. " +
-        "Use the ADB client (SNAPCHAT_CLIENT=adb) with an Android phone to send voice notes.",
+      "Voice notes (audio messages) are not supported on Snapchat Web. Use Snapchat Android/ADB.",
     );
   }
 
-  async markAsRead(_conversationId: string): Promise<void> {
-    // Opening the chat marks it as read in the web UI.
-    await this.openChat(_conversationId);
+  async markAsRead(conversationId: string): Promise<void> {
+    await this.openChat(conversationId);
   }
-
-  // ── Friends ────────────────────────────────────────────────────
 
   async listFriends(): Promise<Friend[]> {
     const conversations = await this.getConversations();
@@ -265,8 +279,6 @@ export class WebSnapchatClient implements SnapchatClient {
     if (!friend) throw new Error(`Friend ${friendId} not found`);
     return friend;
   }
-
-  // ── Voice Calls (live calls on web) ────────────────────────────
 
   async startVoiceCall(params: VoiceCallParams): Promise<VoiceCall> {
     await this.openChat(params.conversationId);
@@ -306,9 +318,7 @@ export class WebSnapchatClient implements SnapchatClient {
 
   async getCallStatus(callId: string): Promise<VoiceCall> {
     const call = this.inProgressCall;
-    if (!call || call.callId !== callId) {
-      throw new Error(`Call ${callId} not found`);
-    }
+    if (!call || call.callId !== callId) throw new Error(`Call ${callId} not found`);
     return call;
   }
 }

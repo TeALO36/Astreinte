@@ -348,3 +348,62 @@ test("un modèle injoignable prévient la personne au lieu de l'ignorer", async 
   await transport.stop();
   await bridge.close();
 });
+
+test("un pont qui accepte le vocal reçoit bien une note vocale synthétisée", async () => {
+  // Le seul chemin encore non couvert : pont capable + TTS disponible.
+  const bridge = new FakeBridge(true); // voice: true
+  const llm = new FakeLlm();
+  const bridgeUrl = await bridge.listen();
+  const llmUrl = await llm.listen();
+
+  // Faux serveur TTS : renvoie un WAV minimal mais valide.
+  const wav = Buffer.concat([
+    Buffer.from("RIFF"), Buffer.alloc(4), Buffer.from("WAVEfmt "),
+    Buffer.alloc(4, 16), Buffer.alloc(16), Buffer.from("data"), Buffer.alloc(4),
+    Buffer.alloc(256),
+  ]);
+  let ttsCalls = 0;
+  const tts = createServer((req, res) => {
+    let body = "";
+    req.on("data", (c) => (body += c));
+    req.on("end", () => {
+      ttsCalls += 1;
+      res.writeHead(200, { "Content-Type": "audio/wav" });
+      res.end(wav);
+    });
+  });
+  await new Promise<void>((r) => tts.listen(0, "127.0.0.1", r));
+  const ttsUrl = `http://127.0.0.1:${(tts.address() as AddressInfo).port}/v1/audio/speech`;
+
+  const cfg = Config.load();
+  cfg.update({
+    "transport.driver": "bridge",
+    "transport.bridge_url": bridgeUrl,
+    "llm.base_url": llmUrl,
+    "llm.timeout_ms": 5000,
+    "limits.enabled": true,
+    "limits.active_hours": "",
+    "limits.escalation_keywords": [],
+    "limits.max_turns_before_escalation": 0,
+    "voice.mode": "always",
+    "voice.tts_mode": "http",
+    "voice.tts_url": ttsUrl,
+    "voice.max_chars": 3000,
+  });
+
+  const transport = new BridgeTransport({ baseUrl: bridgeUrl });
+  const agent = new Agent(cfg, transport);
+  await transport.start((m) => agent.handle(m));
+
+  bridge.push({ contactId: "zoe", contactName: "Zoé", text: "explique moi le wifi" });
+  await waitFor(() => bridge.sent.length >= 1, 8000);
+
+  assert.equal(ttsCalls, 1, "le TTS doit avoir été appelé");
+  assert.equal(bridge.sent[0]?.voice, true, "la réponse doit partir en note vocale");
+  assert.equal(bridge.sent[0]?.contactId, "zoe");
+
+  await transport.stop();
+  await bridge.close();
+  await llm.close();
+  await new Promise<void>((r) => tts.close(() => r()));
+});

@@ -1,150 +1,263 @@
 /**
- * Driver Telegram.
+ * Driver Telegram — compte personnel via MTProto (GramJS).
  *
- * Long polling plutôt que webhook : aucune adresse publique à exposer, aucun
- * certificat, l'extension tourne derrière n'importe quelle box. `getUpdates`
- * bloque côté serveur jusqu'à 25 s, donc la latence reste faible sans marteler
- * l'API.
+ * Pas d'API officielle, pas de jeton de bot : on se connecte avec le compte
+ * Telegram de l'exploitant (api_id/api_hash créés sur my.telegram.org, session
+ * obtenue une fois par `npm run telegram:login`). Le compte apparaît comme un
+ * compte utilisateur normal, jamais avec le badge « bot », et rien ne transite
+ * par un intermédiaire.
  *
- * `sendVoice` demande de l'OGG/Opus pour afficher une vraie note vocale avec sa
- * forme d'onde ; un WAV passerait en pièce jointe. On convertit via ffmpeg
- * quand il est là, et on le dit clairement quand il ne l'est pas.
+ * La réception est en push (`addEventHandler` + filtre `NewMessage`) : aucune
+ * adresse publique à exposer, aucun webhook, aucun polling. Au démarrage, on
+ * rattrape les conversations non lues reçues pendant l'arrêt (l'ancien driver
+ * les rejouait via getUpdates), puis on marque ces conversations comme lues
+ * pour ne pas répondre deux fois au même message. Un ensemble de messages déjà
+ * vus partage le handler temps réel et le rattrapage : un message arrivé
+ * pendant le rattrapage n'est pas traité deux fois.
+ *
+ * `sendVoice` demande de l'OGG/Opus pour une vraie note vocale avec sa forme
+ * d'onde ; on convertit via ffmpeg quand il est là, et on le dit clairement
+ * quand il ne l'est pas.
+ *
+ * L'import se fait depuis le chemin de fichier `telegram/events/NewMessage.js`
+ * : le sous-chemin `telegram/events` n'est pas résolu sous
+ * `moduleResolution: Node16`. Les champs du message restent typés en local
+ * (même style que `client/telegram-client.ts`), sans dépendre de la structure
+ * interne du paquet.
  */
 
+import { TelegramClient, Api, sessions } from "telegram";
+import { NewMessage, type NewMessageEvent } from "telegram/events/NewMessage.js";
 import { spawn } from "node:child_process";
 import type { IncomingMessage } from "../types.js";
+import {
+  loadSessionString,
+  resolveTelegramSession,
+  type ResolvedTelegramSession,
+  type TelegramSessionConfig,
+} from "../telegram/session.js";
 import { TransportError, type Transport, type TransportCapabilities } from "./types.js";
 
-const API = "https://api.telegram.org";
+const { StringSession } = sessions;
 
-interface TelegramUpdate {
-  update_id: number;
-  message?: {
-    message_id: number;
-    date: number;
-    chat: { id: number; first_name?: string; username?: string; title?: string };
-    from?: { first_name?: string; username?: string };
-    text?: string;
-    caption?: string;
-    voice?: { duration: number };
-    audio?: unknown;
-  };
-}
+type EntityLike = NonNullable<Parameters<TelegramClient["getMessages"]>[0]>;
+
+type TelegramSender = {
+  firstName?: string;
+  lastName?: string;
+  username?: string;
+  title?: string;
+};
+
+type TelegramMessage = {
+  id?: { toString(): string } | string | number;
+  out?: boolean;
+  message?: string;
+  date?: number;
+  chatId?: { toString(): string } | string | number;
+  peerId?: { toString(): string } | string | number;
+  voice?: unknown;
+  editDate?: unknown;
+  getSender?(): Promise<TelegramSender | undefined>;
+};
 
 export class TelegramTransport implements Transport {
   readonly id = "telegram";
   readonly capabilities: TransportCapabilities = { voice: true, typing: true };
 
-  private offset = 0;
+  private readonly session: ResolvedTelegramSession;
+  private client: TelegramClient | null = null;
+  private handler: ((msg: IncomingMessage) => Promise<void>) | null = null;
   private running = false;
-  private loop: Promise<void> | null = null;
+  private eventHandler: ((event: NewMessageEvent) => void) | null = null;
+  private readonly messageFilter = new NewMessage({});
+  private readonly seen = new Set<string>();
 
-  constructor(
-    private token: string,
-    private pollIntervalMs = 2000,
-  ) {
-    if (!token.trim()) {
+  constructor(config: TelegramSessionConfig = {}) {
+    this.session = resolveTelegramSession(config);
+  }
+
+  private async ensureClient(): Promise<TelegramClient> {
+    if (this.client) return this.client;
+    const client = new TelegramClient(
+      new StringSession(loadSessionString(this.session)),
+      this.session.apiId,
+      this.session.apiHash,
+      { connectionRetries: 5 },
+    );
+    await client.connect();
+    if (!(await client.checkAuthorization())) {
       throw new TransportError(
-        "jeton Telegram absent. Renseignez-le dans la configuration de l'extension, ou via la variable SNAP_ASTREINTE_TELEGRAM_TOKEN.",
+        "Session Telegram non autorisée. Relancez « npm run telegram:login » pour en créer une neuve.",
       );
     }
+    this.client = client;
+    return client;
   }
 
-  private url(method: string): string {
-    return `${API}/bot${this.token}/${method}`;
-  }
-
-  private async call<T>(method: string, payload: unknown): Promise<T> {
-    const res = await fetch(this.url(method), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    const body = (await res.json().catch(() => ({}))) as {
-      ok?: boolean;
-      result?: T;
-      description?: string;
-    };
-    if (!res.ok || !body.ok) {
-      throw new TransportError(`Telegram ${method} : ${body.description ?? res.status}`);
-    }
-    return body.result as T;
-  }
-
-  /** Vérifie le jeton au démarrage : un jeton faux doit se voir tout de suite. */
   async whoami(): Promise<string> {
-    const me = await this.call<{ username?: string }>("getMe", {});
-    return me.username ? `@${me.username}` : "bot";
+    const client = await this.ensureClient();
+    const me = (await client.getMe()) as { username?: string };
+    return me.username ? `@${me.username}` : "compte personnel";
   }
 
   async start(handler: (msg: IncomingMessage) => Promise<void>): Promise<void> {
+    const client = await this.ensureClient();
     const who = await this.whoami();
     console.error(`[snap-astreinte] Telegram connecté : ${who}`);
+
+    this.handler = handler;
     this.running = true;
-    this.loop = this.pump(handler);
+    this.eventHandler = (event) => {
+      void this.onEvent(event);
+    };
+    // Le filtre NewMessage normalise toutes les formes d'update (message court,
+    // message de canal, etc.) en un objet message complet.
+    client.addEventHandler(this.eventHandler, this.messageFilter);
+
+    // Rattrape les non-lus reçus pendant que le démon était arrêté. La
+    // déduplication par id partagée avec le handler temps réel évite de
+    // répondre deux fois à un message arrivé pendant le rattrapage.
+    await this.catchUpUnread(client);
   }
 
-  private async pump(handler: (msg: IncomingMessage) => Promise<void>): Promise<void> {
-    while (this.running) {
-      try {
-        const updates = await this.call<TelegramUpdate[]>("getUpdates", {
-          offset: this.offset,
-          timeout: 25,
-          allowed_updates: ["message"],
-        });
+  private async onEvent(event: NewMessageEvent): Promise<void> {
+    if (!this.running || !this.handler) return;
+    const message = event.message as TelegramMessage;
+    if (!message || message.out) return; // nos propres envois ne sont pas des entrées
+    // Un message édité (UpdateEditMessage) n'est pas produit par ce filtre,
+    // mais on garde la garde par précaution.
+    if (message.editDate) return;
 
-        for (const update of updates) {
-          // L'offset avance même si le traitement échoue : sinon un message
-          // qui fait planter le handler serait rejoué en boucle sans fin.
-          this.offset = Math.max(this.offset, update.update_id + 1);
-          const msg = update.message;
-          if (!msg) continue;
+    const text = message.message ?? "";
+    const isVoice = !!message.voice;
 
-          const text = msg.text ?? msg.caption ?? "";
-          const isVoice = !!msg.voice;
-          // Un vocal sans transcription n'a pas de texte exploitable : on le
-          // signale plutôt que de laisser le modèle répondre à du vide.
-          if (!text && !isVoice) continue;
+    // Un vocal sans transcription n'a pas de texte exploitable : on le signale
+    // plutôt que de laisser le modèle répondre à du vide.
+    if (!text && !isVoice) return;
 
-          const name =
-            msg.from?.first_name ?? msg.chat.first_name ?? msg.from?.username ?? msg.chat.username;
+    const contactId = String(message.chatId ?? message.peerId ?? "");
+    if (!contactId) return;
 
-          try {
-            await handler({
-              contactId: String(msg.chat.id),
-              contactName: name,
-              text,
-              isVoice,
-              receivedAt: msg.date * 1000,
-            });
-          } catch (e) {
-            console.error(`[snap-astreinte] traitement du message échoué : ${(e as Error).message}`);
-          }
-        }
-      } catch (e) {
-        console.error(`[snap-astreinte] relève Telegram : ${(e as Error).message}`);
-        await sleep(Math.max(this.pollIntervalMs, 3000));
+    await this.dispatch(message, contactId, text, isVoice);
+  }
+
+  private async dispatch(
+    message: TelegramMessage,
+    contactId: string,
+    text: string,
+    isVoice: boolean,
+  ): Promise<void> {
+    if (!this.handler) return;
+
+    // Déduplication : un id de message vu une fois ne repasse jamais, qu'il
+    // vienne du rattrapage ou du handler temps réel.
+    const key = `${contactId}:${String(message.id ?? "")}`;
+    if (this.seen.has(key)) return;
+    this.seen.add(key);
+    // Borne l'ensemble pour ne pas grossir sans fin sur une longue session.
+    if (this.seen.size > 10000) this.seen.clear();
+
+    let contactName: string | undefined;
+    try {
+      const sender = await message.getSender?.();
+      if (sender) {
+        contactName = sender.firstName ?? sender.title ?? sender.username ?? undefined;
       }
+    } catch {
+      // Le nom est cosmétique : un échec ne doit pas faire tomber le message.
+    }
+
+    try {
+      await this.handler({
+        contactId,
+        contactName,
+        text,
+        isVoice,
+        receivedAt: (message.date ?? 0) * 1000,
+      });
+    } catch (e) {
+      console.error(`[snap-astreinte] traitement du message échoué : ${(e as Error).message}`);
+    }
+  }
+
+  /**
+   * Rejoue les messages non lus des conversations, une fois au démarrage,
+   * puis marque ces conversations comme lues pour éviter de les re-traiter au
+   * prochain démarrage. Borné : 20 conversations, 5 messages chacune.
+   */
+  private async catchUpUnread(client: TelegramClient): Promise<void> {
+    if (!this.handler) return;
+    try {
+      let dialogs = 0;
+      for await (const dialog of client.iterDialogs({ limit: 200 })) {
+        const item = dialog as {
+          unreadCount?: number;
+          entity?: unknown;
+        };
+        if (!item.unreadCount || item.unreadCount <= 0 || !item.entity) continue;
+        if (dialogs >= 20) break;
+        dialogs++;
+
+        const entity = item.entity as EntityLike;
+        const messages = (await client.getMessages(entity, {
+          limit: Math.min(item.unreadCount, 5),
+        })) as unknown[];
+
+        // getMessages renvoie du plus récent au plus ancien : on traite dans
+        // l'ordre chronologique pour respecter le fil de conversation.
+        for (let i = messages.length - 1; i >= 0; i--) {
+          const message = messages[i] as TelegramMessage;
+          if (!message || message.out) continue;
+          const text = message.message ?? "";
+          const isVoice = !!message.voice;
+          if (!text && !isVoice) continue;
+          const contactId = String(message.chatId ?? message.peerId ?? "");
+          if (!contactId) continue;
+          await this.dispatch(message, contactId, text, isVoice);
+        }
+
+        // Marque lu après traitement : sans ça, le prochain démarrage
+        // répondrait une deuxième fois au même message.
+        await client.markAsRead(entity).catch((e) => {
+          console.warn(
+            `[snap-astreinte] échec markAsRead (${(e as Error).message}) : les non-lus ` +
+              `seront re-répondus au prochain démarrage.`,
+          );
+        });
+      }
+    } catch (e) {
+      console.error(`[snap-astreinte] rattrapage des non-lus : ${(e as Error).message}`);
     }
   }
 
   async stop(): Promise<void> {
     this.running = false;
-    await this.loop?.catch(() => undefined);
-    this.loop = null;
+    if (this.client && this.eventHandler) {
+      try {
+        this.client.removeEventHandler(this.eventHandler, this.messageFilter);
+      } catch {
+        // Le client peut déjà être fermé ; l'important est d'arrêter.
+      }
+    }
+    this.eventHandler = null;
+    this.handler = null;
+    await this.client?.disconnect().catch(() => undefined);
+    this.client = null;
   }
 
   async sendText(contactId: string, text: string): Promise<void> {
+    const client = await this.ensureClient();
     // Telegram refuse au-delà de 4096 caractères : on découpe plutôt que de
     // laisser l'API rejeter tout le message.
     for (const chunk of chunkText(text, 4000)) {
-      await this.call("sendMessage", { chat_id: contactId, text: chunk });
+      await client.sendMessage(contactId, { message: chunk });
     }
   }
 
   async sendVoice(contactId: string, audio: Buffer, mimeType: string): Promise<void> {
+    const client = await this.ensureClient();
     let payload = audio;
-    let filename = "note.ogg";
 
     if (!mimeType.includes("ogg") && !mimeType.includes("opus")) {
       const converted = await toOpus(audio).catch(() => null);
@@ -157,26 +270,20 @@ export class TelegramTransport implements Transport {
       payload = converted;
     }
 
-    const form = new FormData();
-    form.append("chat_id", contactId);
-    form.append(
-      "voice",
-      new Blob([new Uint8Array(payload)], { type: "audio/ogg" }),
-      filename,
-    );
-
-    const res = await fetch(this.url("sendVoice"), { method: "POST", body: form });
-    const body = (await res.json().catch(() => ({}))) as { ok?: boolean; description?: string };
-    if (!res.ok || !body.ok) {
-      throw new TransportError(`Telegram sendVoice : ${body.description ?? res.status}`);
-    }
+    await client.sendFile(contactId, { file: payload, voiceNote: true });
   }
 
   async setTyping(contactId: string, on: boolean): Promise<void> {
     if (!on) return;
-    await this.call("sendChatAction", { chat_id: contactId, action: "record_voice" }).catch(
-      () => undefined,
-    );
+    const client = await this.ensureClient();
+    await client
+      .invoke(
+        new Api.messages.SetTyping({
+          peer: contactId,
+          action: new Api.SendMessageRecordAudioAction(),
+        }),
+      )
+      .catch(() => undefined);
   }
 }
 
@@ -215,8 +322,4 @@ export function chunkText(text: string, size: number): string[] {
   }
   if (rest) out.push(rest);
   return out;
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
 }

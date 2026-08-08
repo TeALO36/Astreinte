@@ -7,7 +7,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -20,6 +20,7 @@ const { Policy, withinActiveHours } = await import("./policy.js");
 const { Config } = await import("./config.js");
 const { asksForVoice, splitCommand } = await import("./tts.js");
 const { chunkText } = await import("./transports/telegram.js");
+const { resolveTelegramSession, loadSessionString } = await import("./telegram/session.js");
 
 process.on("exit", () => rmSync(home, { recursive: true, force: true }));
 
@@ -303,4 +304,95 @@ test("un message trop long est découpé sans couper un mot", () => {
   assert.ok(parts.length > 1);
   assert.ok(parts.every((p) => p.length <= 4000));
   assert.equal(parts.join(" ").replace(/\s+/g, " ").trim(), long.replace(/\s+/g, " ").trim());
+});
+
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Session Telegram : précédence config > env SNAP_ASTREINTE_ > env TELEGRAM_
+// ---------------------------------------------------------------------------
+
+test("resolveTelegramSession : la config prime sur l'environnement", () => {
+  const oldId = process.env.SNAP_ASTREINTE_TELEGRAM_API_ID;
+  const oldHash = process.env.SNAP_ASTREINTE_TELEGRAM_API_HASH;
+  process.env.SNAP_ASTREINTE_TELEGRAM_API_ID = "999";
+  process.env.SNAP_ASTREINTE_TELEGRAM_API_HASH = "hash-env";
+  try {
+    const r = resolveTelegramSession({ apiId: "123", apiHash: "hash-config" });
+    assert.equal(r.apiId, 123);
+    assert.equal(r.apiHash, "hash-config");
+  } finally {
+    if (oldId === undefined) delete process.env.SNAP_ASTREINTE_TELEGRAM_API_ID;
+    else process.env.SNAP_ASTREINTE_TELEGRAM_API_ID = oldId;
+    if (oldHash === undefined) delete process.env.SNAP_ASTREINTE_TELEGRAM_API_HASH;
+    else process.env.SNAP_ASTREINTE_TELEGRAM_API_HASH = oldHash;
+  }
+});
+
+test("resolveTelegramSession : fallback SNAP_ASTREINTE_TELEGRAM_* quand pas de config", () => {
+  const oldTgId = process.env.TELEGRAM_API_ID;
+  const oldTgHash = process.env.TELEGRAM_API_HASH;
+  const oldId = process.env.SNAP_ASTREINTE_TELEGRAM_API_ID;
+  const oldHash = process.env.SNAP_ASTREINTE_TELEGRAM_API_HASH;
+  delete process.env.TELEGRAM_API_ID;
+  delete process.env.TELEGRAM_API_HASH;
+  process.env.SNAP_ASTREINTE_TELEGRAM_API_ID = "456";
+  process.env.SNAP_ASTREINTE_TELEGRAM_API_HASH = "hash-snap";
+  try {
+    const r = resolveTelegramSession({});
+    assert.equal(r.apiId, 456);
+    assert.equal(r.apiHash, "hash-snap");
+    assert.equal(r.sessionFile, ".telegram/session.txt");
+  } finally {
+    if (oldTgId === undefined) delete process.env.TELEGRAM_API_ID;
+    else process.env.TELEGRAM_API_ID = oldTgId;
+    if (oldTgHash === undefined) delete process.env.TELEGRAM_API_HASH;
+    else process.env.TELEGRAM_API_HASH = oldTgHash;
+    if (oldId === undefined) delete process.env.SNAP_ASTREINTE_TELEGRAM_API_ID;
+    else process.env.SNAP_ASTREINTE_TELEGRAM_API_ID = oldId;
+    if (oldHash === undefined) delete process.env.SNAP_ASTREINTE_TELEGRAM_API_HASH;
+    else process.env.SNAP_ASTREINTE_TELEGRAM_API_HASH = oldHash;
+  }
+});
+
+test("resolveTelegramSession : lève sans api_id ni api_hash", () => {
+  const oldTgId = process.env.TELEGRAM_API_ID;
+  const oldTgHash = process.env.TELEGRAM_API_HASH;
+  const oldId = process.env.SNAP_ASTREINTE_TELEGRAM_API_ID;
+  const oldHash = process.env.SNAP_ASTREINTE_TELEGRAM_API_HASH;
+  delete process.env.TELEGRAM_API_ID;
+  delete process.env.TELEGRAM_API_HASH;
+  delete process.env.SNAP_ASTREINTE_TELEGRAM_API_ID;
+  delete process.env.SNAP_ASTREINTE_TELEGRAM_API_HASH;
+  try {
+    assert.throws(() => resolveTelegramSession({}), /TELEGRAM_API_ID est requis/);
+  } finally {
+    if (oldTgId !== undefined) process.env.TELEGRAM_API_ID = oldTgId;
+    if (oldTgHash !== undefined) process.env.TELEGRAM_API_HASH = oldTgHash;
+    if (oldId !== undefined) process.env.SNAP_ASTREINTE_TELEGRAM_API_ID = oldId;
+    if (oldHash !== undefined) process.env.SNAP_ASTREINTE_TELEGRAM_API_HASH = oldHash;
+  }
+});
+
+test("loadSessionString : lit le fichier et trim", () => {
+  const dir = mkdtempSync(join(tmpdir(), "snap-session-"));
+  const file = join(dir, "session.txt");
+  writeFileSync(file, "  session-secrete  ");
+  try {
+    const r = resolveTelegramSession({ apiId: 1, apiHash: "h", sessionFile: file });
+    assert.equal(loadSessionString(r), "session-secrete");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("loadSessionString : lève si aucun fichier ni chaîne", () => {
+  const dir = mkdtempSync(join(tmpdir(), "snap-session-missing-"));
+  const file = join(dir, "absent.txt");
+  try {
+    const r = resolveTelegramSession({ apiId: 1, apiHash: "h", sessionFile: file });
+    assert.throws(() => loadSessionString(r), /Aucune session Telegram/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

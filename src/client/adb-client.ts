@@ -236,9 +236,9 @@ export class AdbSnapchatClient implements SnapchatClient {
     const seconds = params.text
       ? Math.max(2, Math.round(params.text.split(/\s+/).length / 2.5))
       : 5;
-    await new Promise((r) => setTimeout(r, seconds * 1000));
 
-    // A same-coordinate swipe holds the button and releases it to send.
+    // Start the long press immediately: the phone microphone records during
+    // this swipe, and the release at its end sends the note.
     await this.longPress(mic.x, mic.y, seconds * 1000);
     await new Promise((r) => setTimeout(r, 800));
 

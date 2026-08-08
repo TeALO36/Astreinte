@@ -22,7 +22,7 @@
     "snapmcp": "node dist/snapmcp.js",
     "smoke": "node scripts/smoke-test.mjs",
     "telegram:login": "node scripts/telegram-login.mjs",
-    "test": "tsc && node --test --test-timeout=25000 --test-force-exit dist/snap-astreinte.test.js dist/e2e.test.js && node scripts/smoke-test.mjs",
+    "test": "tsc && node --test --test-timeout=25000 --test-force-exit dist/snap-astreinte.test.js dist/e2e.test.js dist/client-adapter.test.js && node scripts/smoke-test.mjs",
     "check": "node dist/index.js check"
   },
   "keywords": [

@@ -28,7 +28,7 @@ async function daemon(): Promise<void> {
 
   let transport;
   try {
-    transport = createTransport(cfg);
+    transport = await createTransport(cfg);
   } catch (e) {
     console.error(`[snap-astreinte] ${(e as Error).message}`);
     process.exit(1);
@@ -84,7 +84,7 @@ async function check(): Promise<void> {
   const driver = cfg.str("transport.driver");
   lines.push(`Canal        : ${driver}`);
   try {
-    createTransport(cfg);
+    await createTransport(cfg);
     lines.push("  → configuration du canal acceptée");
   } catch (e) {
     lines.push(`  → PROBLÈME : ${(e as Error).message}`);

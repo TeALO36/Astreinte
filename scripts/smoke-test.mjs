@@ -42,6 +42,7 @@ for (const s of steps) {
 }
 
 const expectedTools = [
+  "open_web_login", "web_session_status",
   "get_conversations", "get_conversation", "get_messages", "mark_as_read",
   "send_message", "send_snap", "send_voice_note", "list_friends", "get_friend",
   "voice_call", "end_call", "call_status", "active_call",
@@ -86,7 +87,7 @@ setTimeout(() => {
 
   check("initialize", !!r1 && !r1.error && !!r1.result?.protocolVersion, r1?.error?.message ?? r1?.result?.protocolVersion ?? "pas de réponse");
   check(
-    "tools/list (13 tools)",
+    `tools/list (${expectedTools.length} tools)`,
     !!r2 && !r2.error && Array.isArray(r2.result?.tools) && r2.result.tools.length === expectedTools.length,
     `reçu ${r2?.result?.tools?.length ?? 0} tools`,
   );
