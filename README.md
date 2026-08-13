@@ -51,6 +51,7 @@ node dist/index.js daemon    # le persona tourne
 | `npm run test` | compile puis lance les deux suites de tests (`dist/*.test.js`). |
 | `npm run dev` | recompile en continu pendant le développement (`tsc --watch`). |
 | `npm run start` | lance le démon depuis `dist/` (`node dist/index.js daemon`). |
+| `npm run android:vms` | démarre les trois VM Android du banc et ouvre le Play Store sur chacune. |
 
 ## Les deux modes
 
