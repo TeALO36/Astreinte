@@ -12,10 +12,11 @@ Le pont expose le contrat HTTP local décrit en tête de
 
 | Route | Rôle |
 |---|---|
-| `GET /health` | `{ ok, voice: true, detail }` — dit si le compte est connecté |
+| `GET /health` | `{ ok, voice: true, images: true, detail }` — dit si le compte est connecté |
 | `GET /events` | flux SSE des messages reçus |
 | `POST /send` | `{ contactId, text }` |
 | `POST /sendVoice` | `{ contactId, audioBase64, mimeType }` |
+| `POST /sendMedia` | `{ contactId, mediaBase64, mimeType, caption }` — envoie une **photo** (pas un fichier joint) |
 
 ## Installation
 
@@ -66,7 +67,8 @@ Dans la configuration de l'extension :
 
 Vérifiez sans rien envoyer : `node dist/index.js check`. Le démon
 (`npm run start`) reçoit alors les messages par le pont et répond, notes
-vocales comprises (le pont annonce `voice: true` sur `/health`).
+vocales et images comprises (le pont annonce `voice: true` et
+`images: true` sur `/health`).
 
 ## Tester le contrat sans compte Telegram
 
@@ -76,9 +78,9 @@ python bridge.py --dry-run
 
 Le serveur démarre sans aucun compte : `/health` répond 503 avec
 `{ ok: false }` (l'extension affiche « le pont ne répond pas » — normal), le
-flux `/events` reste ouvert avec ses `: ping`, et `/send` / `/sendVoice`
-répondent 503 « pont non connecté ». Utile pour valider l'installation et le
-contrat HTTP avant de se connecter.
+flux `/events` reste ouvert avec ses `: ping`, et `/send` / `/sendVoice` /
+`/sendMedia` répondent 503 « pont non connecté ». Utile pour valider
+l'installation et le contrat HTTP avant de se connecter.
 
 ## Notes
 
@@ -92,6 +94,9 @@ contrat HTTP avant de se connecter.
   d'onde). Si le fichier reçu n'est pas en OGG/Opus, `ffmpeg` est utilisé
   pour convertir ; sans ffmpeg, l'envoi échoue franchement et l'extension
   retombe en texte (c'est le comportement prévu par le contrat).
+- Les **images** partent en vraie photo (`force_document=False`, le type est
+  détecté par Telethon) : le persona de l'extension peut répondre avec une
+  image générée, avec la légende du modèle en caption.
 - Compte personnel = « userbot » : toléré pour un usage privé, contraire aux
   conditions d'utilisation de Telegram. Utilisez de préférence un compte
   secondaire dédié.

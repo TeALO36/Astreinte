@@ -4,10 +4,11 @@ Pont Telegram (Telethon) pour l'extension Astreinte — driver « bridge ».
 
 Expose le contrat HTTP local décrit en tête de `src/transports/bridge.ts` :
 
-    GET  /health      -> { ok, voice, detail }
+    GET  /health      -> { ok, voice, images, detail }
     GET  /events      -> flux SSE des messages entrants
     POST /send        -> { contactId, text }
     POST /sendVoice   -> { contactId, audioBase64, mimeType }
+    POST /sendMedia   -> { contactId, mediaBase64, mimeType, caption }
 
 C'est la preuve de la bascule de bibliothèque documentée dans
 `docs/TELEGRAM-LIBRARIES.md` : l'extension parle à Telegram par MTProto via
@@ -107,7 +108,7 @@ class Bridge:
     async def health(self, _request: web.Request) -> web.Response:
         if self.dry_run:
             return web.json_response(
-                {"ok": False, "voice": True, "detail": "dry-run : aucun compte Telegram"},
+                {"ok": False, "voice": True, "images": True, "detail": "dry-run : aucun compte Telegram"},
                 status=503,
             )
         ok = self.connected()
@@ -115,6 +116,7 @@ class Bridge:
             {
                 "ok": ok,
                 "voice": True,
+                "images": True,
                 "detail": await self.me_label() if ok else "non connecté",
             },
             status=200 if ok else 503,
@@ -147,6 +149,43 @@ class Bridge:
         finally:
             self.sse_clients.discard(queue)
         return resp
+
+    async def send_media(self, request: web.Request) -> web.Response:
+        if not self.connected():
+            return self._not_connected()
+        body = await request.json()
+        contact_id = str(body.get("contactId") or "")
+        media = base64.b64decode(str(body.get("mediaBase64") or ""))
+        mime = str(body.get("mimeType") or "")
+        caption = str(body.get("caption") or "")
+        if not contact_id or not media:
+            return web.json_response(
+                {"error": "contactId et mediaBase64 sont requis"}, status=400
+            )
+        try:
+            peer = await self.client.get_input_entity(contact_id)
+        except Exception as exc:
+            return web.json_response({"error": str(exc)}, status=400)
+
+        with tempfile.NamedTemporaryFile(
+            suffix=_extension_for(mime), delete=False
+        ) as tmp:
+            tmp_path = tmp.name
+            tmp.write(media)
+        try:
+            # force_document=False : Telethon détecte le type et envoie une
+            # photo (jpg/png), pas un fichier joint.
+            await self.client.send_file(
+                peer, tmp_path, caption=caption or None, force_document=False
+            )
+            return web.json_response({})
+        except Exception as exc:
+            return web.json_response({"error": str(exc)}, status=400)
+        finally:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
 
     async def send(self, request: web.Request) -> web.Response:
         if not self.connected():
@@ -260,6 +299,8 @@ def _extension_for(mime: str) -> str:
     m = mime.lower()
     if "jpeg" in m or "jpg" in m:
         return ".jpg"
+    if "png" in m:
+        return ".png"
     if "webp" in m:
         return ".webp"
     if "gif" in m:
@@ -348,12 +389,13 @@ async def main(argv=None) -> None:
     app.router.add_get("/events", bridge.events)
     app.router.add_post("/send", bridge.send)
     app.router.add_post("/sendVoice", bridge.send_voice)
+    app.router.add_post("/sendMedia", bridge.send_media)
 
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, args.host, args.port)
     await site.start()
-    log.info("Pont Telegram : http://%s:%s  (health, events, send, sendVoice)", args.host, args.port)
+    log.info("Pont Telegram : http://%s:%s  (health, events, send, sendVoice, sendMedia)", args.host, args.port)
 
     try:
         if client is not None:

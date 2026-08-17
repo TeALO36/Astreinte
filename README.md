@@ -194,20 +194,24 @@ réponse part en texte.
 
 Certains canaux (Snapchat en premier lieu) n'exposent aucune API permettant de
 lire ou d'envoyer des messages. Le driver `bridge` s'adresse à un processus que
-vous fournissez, dans le langage de votre choix, qui expose quatre routes en
+vous fournissez, dans le langage de votre choix, qui expose cinq routes en
 local :
 
 | Route | Rôle |
 |---|---|
-| `GET /health` | `{ ok: true, voice: true }` |
+| `GET /health` | `{ ok: true, voice: true, images: true }` |
 | `GET /events` | flux SSE des messages reçus |
 | `POST /send` | `{ contactId, text }` |
 | `POST /sendVoice` | `{ contactId, audioBase64, mimeType }` |
+| `POST /sendMedia` | `{ contactId, mediaBase64, mimeType, caption }` — photo, pas un fichier joint |
 
-Le contrat détaillé est en tête de `src/transports/bridge.ts`. Un pont
-**Telegram prêt à l'emploi** (Telethon, compte personnel ou bot, QR, notes
-vocales) vit dans [`bridge-telethon/`](bridge-telethon/) : c'est la
-démonstration de la bascule de bibliothèque MTProto, voir
+`/health` annonce les capacités : `voice` dit si le pont sait envoyer une note
+vocale, `images` s'il sait envoyer une photo. Le persona ne demande une image
+que si le canal le permet. Le contrat détaillé est en tête de
+`src/transports/bridge.ts`. Un pont **Telegram prêt à l'emploi** (Telethon,
+compte personnel ou bot, QR, notes vocales **et images**) vit dans
+[`bridge-telethon/`](bridge-telethon/) : c'est la démonstration de la bascule
+de bibliothèque MTProto, voir
 [`docs/TELEGRAM-LIBRARIES.md`](docs/TELEGRAM-LIBRARIES.md).
 
 Deux points sur lesquels un pont se plante en général :

@@ -35,18 +35,25 @@
  * { "contactId": "u_8f21", "audioBase64": "...", "mimeType": "audio/ogg" }
  * ```
  *
+ * ### `POST /sendMedia` — envoyer une image (photo, pas un fichier joint)
+ *
+ * ```json
+ * { "contactId": "u_8f21", "mediaBase64": "...", "mimeType": "image/png", "caption": "Voici." }
+ * ```
+ *
  * Répondre 4xx/5xx avec `{"error":"..."}` si le canal ne sait pas envoyer
- * d'audio. L'extension retombe alors sur du texte — mais seulement si le pont
- * le dit franchement plutôt que d'envoyer autre chose en silence.
+ * d'audio ou d'image. L'extension retombe alors sur du texte — mais seulement
+ * si le pont le dit franchement plutôt que d'envoyer autre chose en silence.
  *
  * ### `GET /health` — état du pont
  *
  * ```json
- * { "ok": true, "voice": true, "detail": "session active" }
+ * { "ok": true, "voice": true, "images": true, "detail": "session active" }
  * ```
  *
- * `voice` annonce si `/sendVoice` est utilisable. L'extension le lit au
- * démarrage et n'essaiera pas de synthétiser pour rien.
+ * `voice` annonce si `/sendVoice` est utilisable, `images` si `/sendMedia`
+ * l'est. L'extension les lit au démarrage et n'essaiera pas de synthétiser ni
+ * de générer une image pour rien.
  *
  * ## Ce que le pont doit garantir
  *
@@ -55,6 +62,7 @@
  * répond à lui-même en boucle.
  */
 
+import { existsSync, readFileSync } from "node:fs";
 import type { IncomingMessage } from "../types.js";
 import { TransportError, type Transport, type TransportCapabilities } from "./types.js";
 
@@ -94,15 +102,25 @@ export class BridgeTransport implements Transport {
     return this.opts.token ? { ...extra, Authorization: `Bearer ${this.opts.token}` } : extra;
   }
 
-  /** Interroge `/health` : dit si le pont répond et s'il sait faire du vocal. */
-  async probe(): Promise<{ ok: boolean; voice: boolean; detail?: string }> {
+  /** Interroge `/health` : dit si le pont répond et ce qu'il sait envoyer. */
+  async probe(): Promise<{ ok: boolean; voice: boolean; images: boolean; detail?: string }> {
     try {
       const res = await fetch(this.url("/health"), { headers: this.headers() });
-      if (!res.ok) return { ok: false, voice: false, detail: `HTTP ${res.status}` };
-      const body = (await res.json()) as { ok?: boolean; voice?: boolean; detail?: string };
-      return { ok: body.ok !== false, voice: body.voice === true, detail: body.detail };
+      if (!res.ok) return { ok: false, voice: false, images: false, detail: `HTTP ${res.status}` };
+      const body = (await res.json()) as {
+        ok?: boolean;
+        voice?: boolean;
+        images?: boolean;
+        detail?: string;
+      };
+      return {
+        ok: body.ok !== false,
+        voice: body.voice === true,
+        images: body.images === true,
+        detail: body.detail,
+      };
     } catch (e) {
-      return { ok: false, voice: false, detail: (e as Error).message };
+      return { ok: false, voice: false, images: false, detail: (e as Error).message };
     }
   }
 
@@ -114,7 +132,7 @@ export class BridgeTransport implements Transport {
           `Démarrez-le avant l'extension.`,
       );
     }
-    this.capabilities = { voice: health.voice, images: false, typing: false };
+    this.capabilities = { voice: health.voice, images: health.images, typing: false };
     this.running = true;
 
     // Le contrat dit que `start()` ne rend la main qu'une fois le canal prêt à
@@ -141,6 +159,7 @@ export class BridgeTransport implements Transport {
     console.error(
       `[snap-astreinte] pont ${this.id} connecté (${this.opts.baseUrl})` +
         `${health.voice ? ", vocal disponible" : ", vocal indisponible"}` +
+        `${health.images ? ", images disponibles" : ", images indisponibles"}` +
         `${health.detail ? ` — ${health.detail}` : ""}`,
     );
   }
@@ -241,16 +260,37 @@ export class BridgeTransport implements Transport {
   }
 
   async sendImage(
-    _contactId: string,
-    _media: Buffer | string,
-    _mimeType: string,
-    _caption?: string,
+    contactId: string,
+    media: Buffer | string,
+    mimeType: string,
+    caption?: string,
   ): Promise<void> {
-    // Le contrat du pont n'a pas de route média. Un pont qui voudrait recevoir
-    // des images exposerait `/sendMedia` — voir la doc en tête de ce fichier.
-    throw new TransportError(
-      "ce pont n'a pas de route /sendMedia : les images ne sont pas prises en charge par le bridge pour l'instant",
-    );
+    if (!this.capabilities.images) {
+      throw new TransportError("ce pont annonce ne pas savoir envoyer d'image");
+    }
+
+    // Le contrat passe l'image en base64. Un chemin ou une URL est lu ici ; un
+    // buffer est utilisé tel quel.
+    const bytes = Buffer.isBuffer(media) ? media : await mediaToBuffer(media);
+    if (bytes.length === 0) throw new TransportError("l'image à envoyer est vide");
+    if (bytes.length > 25 * 1024 * 1024) {
+      throw new TransportError("l'image dépasse 25 Mo, le pont la refusera");
+    }
+
+    const res = await fetch(this.url("/sendMedia"), {
+      method: "POST",
+      headers: this.headers({ "Content-Type": "application/json" }),
+      body: JSON.stringify({
+        contactId,
+        mediaBase64: bytes.toString("base64"),
+        mimeType,
+        caption: caption ?? "",
+      }),
+    });
+    if (!res.ok) {
+      const detail = await res.text().catch(() => "");
+      throw new TransportError(`pont /sendMedia : ${res.status} ${detail.slice(0, 200)}`);
+    }
   }
 
   async sendVoice(contactId: string, audio: Buffer, mimeType: string): Promise<void> {
@@ -267,6 +307,17 @@ export class BridgeTransport implements Transport {
       throw new TransportError(`pont /sendVoice : ${res.status} ${detail.slice(0, 200)}`);
     }
   }
+}
+
+/** Charge un média depuis un chemin local ou une URL. */
+async function mediaToBuffer(source: string): Promise<Buffer> {
+  if (/^https?:\/\//i.test(source)) {
+    const res = await fetch(source);
+    if (!res.ok) throw new TransportError(`téléchargement de l'image refusé (${res.status})`);
+    return Buffer.from(await res.arrayBuffer());
+  }
+  if (!existsSync(source)) throw new TransportError(`fichier image introuvable : ${source}`);
+  return readFileSync(source);
 }
 
 function sleep(ms: number): Promise<void> {

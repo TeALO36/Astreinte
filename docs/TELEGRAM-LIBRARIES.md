@@ -79,8 +79,10 @@ toucher au reste**. Le contrat à respecter :
 Un pont Telethon **prêt à l'emploi** vit dans [`bridge-telethon/`](../bridge-telethon/)
 (`bridge.py` + `requirements.txt` + README). Il expose exactement le contrat
 du driver `bridge` (`GET /health`, `GET /events` en SSE, `POST /send`,
-`POST /sendVoice` — détaillé dans `src/transports/bridge.ts`) et sait se
-connecter en compte personnel (`--login`, `--qr`) ou en bot (`--bot`).
+`POST /sendVoice`, `POST /sendMedia` — détaillé dans `src/transports/bridge.ts`)
+et sait se connecter en compte personnel (`--login`, `--qr`) ou en bot
+(`--bot`). `/health` annonce `voice: true` et `images: true` : notes vocales
+et photos (générées par le persona, par exemple) passent par le pont.
 
 ```bash
 cd bridge-telethon
@@ -91,9 +93,10 @@ python bridge.py                 # puis : le pont écoute sur 127.0.0.1:8765
 
 Et côté extension : `transport.driver = bridge`,
 `transport.bridge_url = http://127.0.0.1:8765`. Le démon reçoit et répond par
-le pont, notes vocales comprises (le pont annonce `voice: true` et convertit
-avec ffmpeg si besoin). Un `python bridge.py --dry-run` permet de valider le
-serveur et le contrat HTTP sans aucun compte Telegram.
+le pont, notes vocales et images comprises (le pont annonce `voice: true` et
+`images: true`, convertit le vocal avec ffmpeg si besoin). Un
+`python bridge.py --dry-run` permet de valider le serveur et le contrat HTTP
+sans aucun compte Telegram.
 
 La voie directe (remplacer GramJS dans `telegram.ts` par un appel à un
 sous-processus Telethon) revient au même coût, mais en l'écrivant dans le

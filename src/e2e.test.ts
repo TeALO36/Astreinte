@@ -28,18 +28,33 @@ process.on("exit", () => rmSync(home, { recursive: true, force: true }));
 
 /** Pont factice : diffuse les messages qu'on lui pousse, collecte les envois. */
 class FakeBridge {
-  readonly sent: { contactId: string; text?: string; voice?: boolean }[] = [];
+  readonly sent: {
+    contactId: string;
+    text?: string;
+    voice?: boolean;
+    media?: { mimeType?: string; caption?: string };
+  }[] = [];
   private clients: import("node:http").ServerResponse[] = [];
   private server: Server;
   port = 0;
 
-  constructor(private voiceCapable = false) {
+  constructor(
+    private voiceCapable = false,
+    private imageCapable = false,
+  ) {
     this.server = createServer((req, res) => {
       const url = req.url ?? "";
 
       if (url === "/health") {
         res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ ok: true, voice: this.voiceCapable, detail: "pont de test" }));
+        res.end(
+          JSON.stringify({
+            ok: true,
+            voice: this.voiceCapable,
+            images: this.imageCapable,
+            detail: "pont de test",
+          }),
+        );
         return;
       }
 
@@ -57,15 +72,24 @@ class FakeBridge {
         return;
       }
 
-      if (url === "/send" || url === "/sendVoice") {
+      if (url === "/send" || url === "/sendVoice" || url === "/sendMedia") {
         let body = "";
         req.on("data", (c) => (body += c));
         req.on("end", () => {
-          const parsed = JSON.parse(body || "{}") as { contactId: string; text?: string };
+          const parsed = JSON.parse(body || "{}") as {
+            contactId: string;
+            text?: string;
+            mimeType?: string;
+            caption?: string;
+          };
           this.sent.push({
             contactId: parsed.contactId,
             text: parsed.text,
             voice: url === "/sendVoice",
+            media:
+              url === "/sendMedia"
+                ? { mimeType: parsed.mimeType, caption: parsed.caption }
+                : undefined,
           });
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end("{}");
@@ -101,7 +125,10 @@ class FakeLlm {
   readonly seen: { system: string; lastUser: string }[] = [];
   private server: Server;
 
-  constructor(private delayMs = 0) {
+  constructor(
+    private delayMs = 0,
+    private reply?: string,
+  ) {
     this.server = createServer((req, res) => {
       let body = "";
       req.on("data", (c) => (body += c));
@@ -117,7 +144,13 @@ class FakeLlm {
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(
             JSON.stringify({
-              choices: [{ message: { content: `réponse à « ${lastUser} »` } }],
+              choices: [
+                {
+                  message: {
+                    content: this.reply ?? `réponse à « ${lastUser} »`,
+                  },
+                },
+              ],
             }),
           );
         }, this.delayMs);
@@ -406,4 +439,68 @@ test("un pont qui accepte le vocal reçoit bien une note vocale synthétisée", 
   await bridge.close();
   await llm.close();
   await new Promise<void>((r) => tts.close(() => r()));
+});
+
+test("un pont qui accepte les images reçoit la photo générée, avec la légende", async () => {
+  // Le flux image complet passe par le vrai contrat /sendMedia du pont.
+  const bridge = new FakeBridge(false, true); // images: true
+  // Le modèle émet la directive IMAGE: comme le lui demande le prompt système.
+  const llm = new FakeLlm(0, "IMAGE: a red bicycle on a mountain road\nVoici l'image !");
+  const bridgeUrl = await bridge.listen();
+  const llmUrl = await llm.listen();
+
+  // Faux serveur d'images : renvoie un b64_json.
+  const png = Buffer.alloc(512);
+  let imageCalls = 0;
+  const images = createServer((req, res) => {
+    let body = "";
+    req.on("data", (c) => (body += c));
+    req.on("end", () => {
+      imageCalls += 1;
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ data: [{ b64_json: png.toString("base64") }] }));
+    });
+  });
+  await new Promise<void>((r) => images.listen(0, "127.0.0.1", r));
+  const imageUrl = `http://127.0.0.1:${(images.address() as AddressInfo).port}/v1`;
+
+  const cfg = Config.load();
+  cfg.update({
+    "transport.driver": "bridge",
+    "transport.bridge_url": bridgeUrl,
+    "llm.base_url": llmUrl,
+    "llm.timeout_ms": 5000,
+    "image.mode": "on_request",
+    "image.engine": "http",
+    "image.base_url": imageUrl,
+    "limits.enabled": true,
+    "limits.active_hours": "",
+    "limits.escalation_keywords": [],
+    "limits.max_turns_before_escalation": 0,
+    "voice.mode": "never",
+    "voice.tts_mode": "disabled",
+    "notify.enabled": false,
+  });
+
+  const transport = new BridgeTransport({ baseUrl: bridgeUrl });
+  const agent = new Agent(cfg, transport);
+  await transport.start((m) => agent.handle(m));
+
+  bridge.push({ contactId: "yann", contactName: "Yann", text: "envoie-moi une photo de vélo" });
+  await waitFor(() => bridge.sent.length >= 1, 8000);
+
+  assert.equal(imageCalls, 1, "le serveur d'images doit avoir été appelé");
+  assert.equal(bridge.sent[0]?.contactId, "yann");
+  assert.equal(bridge.sent[0]?.voice, false);
+  assert.ok(bridge.sent[0]?.media, "la réponse doit partir par /sendMedia");
+  assert.equal(bridge.sent[0]?.media?.mimeType, "image/png");
+  assert.equal(bridge.sent[0]?.media?.caption, "Voici l'image !");
+
+  const entry = agent.recentLog().at(-1);
+  assert.equal(entry?.image, true, "le journal doit tracer l'envoi d'image");
+
+  await transport.stop();
+  await bridge.close();
+  await llm.close();
+  await new Promise<void>((r) => images.close(() => r()));
 });

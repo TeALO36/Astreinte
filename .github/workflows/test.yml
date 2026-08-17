@@ -3,6 +3,8 @@ name: tests
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
 
 jobs:
   tests:
@@ -25,3 +27,58 @@ jobs:
 
       - name: Tests
         run: npm test
+
+  # Le pont Python (Telethon) exige un environnement Python : ce job crée le
+  # venv de bridge-telethon (que le test d'intégration préfère à un python du
+  # PATH) et exécute le test du contrat HTTP, sur Linux et Windows.
+  pont-python:
+    name: Pont Python (Telethon)
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    steps:
+      - name: Récupération du code
+        uses: actions/checkout@v4
+
+      - name: Installation de Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Installation de Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: bridge-telethon/requirements.txt
+
+      - name: Installation des dépendances Node
+        run: npm ci
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+
+      - name: Compilation TypeScript
+        run: npm run build
+
+      - name: Venv + Telethon (Linux/macOS)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          cd bridge-telethon
+          python -m venv .venv
+          ./.venv/bin/python -m pip install -r requirements.txt
+
+      - name: Venv + Telethon (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          cd bridge-telethon
+          python -m venv .venv
+          ./.venv/Scripts/python.exe -m pip install -r requirements.txt
+
+      - name: Test d'intégration du pont
+        run: node --test --test-timeout=25000 --test-force-exit dist/bridge-integration.test.js
