@@ -35,6 +35,8 @@ export interface ClientTransportOptions {
   label?: string;
   /** Le canal sait-il envoyer une note vocale ? */
   voice?: boolean;
+  /** Le canal sait-il envoyer une image ? */
+  images?: boolean;
   pollIntervalMs?: number;
   /** Conversations relues à chaque tour. */
   conversationLimit?: number;
@@ -78,7 +80,11 @@ export class ClientTransport implements Transport {
 
   constructor(private opts: ClientTransportOptions) {
     this.id = opts.label ?? "client";
-    this.capabilities = { voice: opts.voice ?? false, typing: false };
+    this.capabilities = {
+      voice: opts.voice ?? false,
+      images: opts.images ?? false,
+      typing: false,
+    };
     this.selfId = opts.selfId;
   }
 
@@ -216,6 +222,50 @@ export class ClientTransport implements Transport {
       rmSync(dir, { recursive: true, force: true });
     }
   }
+
+  async sendImage(
+    contactId: string,
+    media: Buffer | string,
+    mimeType: string,
+    caption?: string,
+  ): Promise<void> {
+    if (!this.capabilities.images) {
+      throw new TransportError(`le canal ${this.id} ne sait pas envoyer d'image`);
+    }
+
+    // `sendSnap` attend un chemin ou une URL : un buffer est matérialisé dans
+    // un fichier temporaire, puis supprimé (même principe que le vocal).
+    let mediaUrl = media;
+    let dir: string | null = null;
+    if (Buffer.isBuffer(media)) {
+      dir = mkdtempSync(join(tmpdir(), "snap-astreinte-image-"));
+      const path = join(dir, `image${extensionForImage(mimeType)}`);
+      writeFileSync(path, media);
+      mediaUrl = path;
+    }
+
+    try {
+      const sent = await this.opts.client.sendSnap({
+        conversationId: contactId,
+        mediaUrl: String(mediaUrl),
+        type: "image",
+        caption,
+      });
+      this.remember(sent.id, sent.senderId);
+    } finally {
+      if (dir) rmSync(dir, { recursive: true, force: true });
+    }
+  }
+}
+
+/** Extension de fichier selon le type MIME, pour l'envoi d'une image. */
+function extensionForImage(mimeType: string): string {
+  const m = mimeType.toLowerCase();
+  if (m.includes("jpeg") || m.includes("jpg")) return ".jpg";
+  if (m.includes("webp")) return ".webp";
+  if (m.includes("gif")) return ".gif";
+  if (m.includes("bmp")) return ".bmp";
+  return ".png";
 }
 
 function sleep(ms: number): Promise<void> {

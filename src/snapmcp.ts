@@ -34,6 +34,10 @@ const client = createSnapchatClient({
     process.env.TELEGRAM_API_HASH ?? config.str("transport.telegram_api_hash"),
   TELEGRAM_SESSION_FILE:
     process.env.TELEGRAM_SESSION_FILE ?? config.str("transport.telegram_session_file"),
+  TELEGRAM_AUTH_TYPE:
+    process.env.TELEGRAM_AUTH_TYPE ?? config.str("transport.telegram_auth"),
+  TELEGRAM_BOT_TOKEN:
+    process.env.TELEGRAM_BOT_TOKEN ?? config.str("transport.telegram_bot_token"),
 });
 
 serveStdio(() => createSnapMcpServer(client));

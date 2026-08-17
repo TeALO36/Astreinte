@@ -20,7 +20,11 @@ const { Policy, withinActiveHours } = await import("./policy.js");
 const { Config } = await import("./config.js");
 const { asksForVoice, splitCommand } = await import("./tts.js");
 const { chunkText } = await import("./transports/telegram.js");
-const { resolveTelegramSession, loadSessionString } = await import("./telegram/session.js");
+const {
+  resolveTelegramSession,
+  loadSessionString,
+  ensureSessionAuthorized,
+} = await import("./telegram/session.js");
 
 process.on("exit", () => rmSync(home, { recursive: true, force: true }));
 
@@ -395,4 +399,94 @@ test("loadSessionString : lève si aucun fichier ni chaîne", () => {
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("resolveTelegramSession : compte par défaut, bot sur demande", () => {
+  const account = resolveTelegramSession({ apiId: 1, apiHash: "h" });
+  assert.equal(account.authType, "account");
+  assert.equal(account.botToken, undefined);
+
+  const bot = resolveTelegramSession({ apiId: 1, apiHash: "h", authType: "bot", botToken: "123:abc" });
+  assert.equal(bot.authType, "bot");
+  assert.equal(bot.botToken, "123:abc");
+});
+
+test("resolveTelegramSession : jeton de bot depuis l'environnement", () => {
+  const old = process.env.SNAP_ASTREINTE_TELEGRAM_BOT_TOKEN;
+  process.env.SNAP_ASTREINTE_TELEGRAM_BOT_TOKEN = "999:env-token";
+  try {
+    const r = resolveTelegramSession({ apiId: 1, apiHash: "h", authType: "bot" });
+    assert.equal(r.botToken, "999:env-token");
+  } finally {
+    if (old === undefined) delete process.env.SNAP_ASTREINTE_TELEGRAM_BOT_TOKEN;
+    else process.env.SNAP_ASTREINTE_TELEGRAM_BOT_TOKEN = old;
+  }
+});
+
+test("ensureSessionAuthorized : une session valide n'appelle pas signInBot", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "snap-auth-ok-"));
+  const file = join(dir, "session.txt");
+  let signInCalls = 0;
+  const client = {
+    connect: async () => undefined,
+    checkAuthorization: async () => true,
+    signInBot: async () => {
+      signInCalls++;
+      return {};
+    },
+    getMe: async () => ({ username: "deja-connecte" }),
+    session: { save: () => "ancienne" },
+  };
+  try {
+    const r = resolveTelegramSession({ apiId: 1, apiHash: "h", sessionFile: file });
+    await ensureSessionAuthorized(client, r);
+    assert.equal(signInCalls, 0);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("ensureSessionAuthorized : un bot sans session s'authentifie et sauvegarde", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "snap-auth-bot-"));
+  const file = join(dir, "session.txt");
+  const calls: Array<{ apiId: number; apiHash: string; botAuthToken: string }> = [];
+  const client = {
+    connect: async () => undefined,
+    checkAuthorization: async () => false,
+    signInBot: async (credentials: { apiId: number; apiHash: string }, auth: { botAuthToken: string }) => {
+      calls.push({ ...credentials, ...auth });
+      return { id: 42 };
+    },
+    getMe: async () => ({ username: "mon_bot" }),
+    session: { save: () => "session-du-bot" },
+  };
+  try {
+    const r = resolveTelegramSession({
+      apiId: 1,
+      apiHash: "h",
+      authType: "bot",
+      botToken: "123:token",
+      sessionFile: file,
+    });
+    await ensureSessionAuthorized(client, r);
+    assert.deepEqual(calls, [{ apiId: 1, apiHash: "h", botAuthToken: "123:token" }]);
+    assert.equal(loadSessionString(r), "session-du-bot", "la session obtenue doit être écrite");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("ensureSessionAuthorized : un compte non autorisé lève une erreur claire", async () => {
+  const client = {
+    connect: async () => undefined,
+    checkAuthorization: async () => false,
+    signInBot: async () => ({}),
+    getMe: async () => ({}),
+    session: { save: () => "" },
+  };
+  const r = resolveTelegramSession({ apiId: 1, apiHash: "h", sessionFile: "/tmp/x" });
+  await assert.rejects(
+    () => ensureSessionAuthorized(client, r),
+    /Session Telegram non autorisée/,
+  );
 });

@@ -71,7 +71,7 @@ export interface BridgeOptions {
 
 export class BridgeTransport implements Transport {
   readonly id: string;
-  capabilities: TransportCapabilities = { voice: false, typing: false };
+  capabilities: TransportCapabilities = { voice: false, images: false, typing: false };
 
   private running = false;
   private loop: Promise<void> | null = null;
@@ -114,7 +114,7 @@ export class BridgeTransport implements Transport {
           `Démarrez-le avant l'extension.`,
       );
     }
-    this.capabilities = { voice: health.voice, typing: false };
+    this.capabilities = { voice: health.voice, images: false, typing: false };
     this.running = true;
 
     // Le contrat dit que `start()` ne rend la main qu'une fois le canal prêt à
@@ -238,6 +238,19 @@ export class BridgeTransport implements Transport {
       const detail = await res.text().catch(() => "");
       throw new TransportError(`pont /send : ${res.status} ${detail.slice(0, 200)}`);
     }
+  }
+
+  async sendImage(
+    _contactId: string,
+    _media: Buffer | string,
+    _mimeType: string,
+    _caption?: string,
+  ): Promise<void> {
+    // Le contrat du pont n'a pas de route média. Un pont qui voudrait recevoir
+    // des images exposerait `/sendMedia` — voir la doc en tête de ce fichier.
+    throw new TransportError(
+      "ce pont n'a pas de route /sendMedia : les images ne sont pas prises en charge par le bridge pour l'instant",
+    );
   }
 
   async sendVoice(contactId: string, audio: Buffer, mimeType: string): Promise<void> {

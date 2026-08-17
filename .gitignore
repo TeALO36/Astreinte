@@ -20,3 +20,9 @@ dist/
 # Session browser/état d'authentification (ne jamais commiter)
 .snapmcp/
 .telegram/
+
+# Sessions Telethon du pont externe
+*.session
+bridge-telethon/.venv/
+__pycache__/
+*.pyc

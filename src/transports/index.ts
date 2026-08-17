@@ -15,10 +15,14 @@ export type { Transport } from "./types.js";
  * l'exécution : mieux vaut le déclarer et laisser le démon replier vers le
  * texte que de tenter un envoi qui échouera à chaque message.
  */
-const SNAPCHAT_BACKENDS: Record<string, { voice: boolean; note: string }> = {
-  adb: { voice: true, note: "téléphone Android via adb" },
-  web: { voice: false, note: "web.snapchat.com via Playwright — pas de note vocale" },
-  mock: { voice: true, note: "client factice, aucun envoi réel" },
+const SNAPCHAT_BACKENDS: Record<string, { voice: boolean; images: boolean; note: string }> = {
+  adb: { voice: true, images: true, note: "téléphone Android via adb" },
+  web: {
+    voice: false,
+    images: false,
+    note: "web.snapchat.com via Playwright — pas de note vocale ni de photo envoyée",
+  },
+  mock: { voice: true, images: true, note: "client factice, aucun envoi réel" },
 };
 
 /**
@@ -35,6 +39,8 @@ export async function createTransport(cfg: Config): Promise<Transport> {
         apiId: cfg.num("transport.telegram_api_id") || undefined,
         apiHash: cfg.str("transport.telegram_api_hash") || undefined,
         sessionFile: cfg.str("transport.telegram_session_file") || undefined,
+        authType: (cfg.str("transport.telegram_auth") === "bot" ? "bot" : "account") as "account" | "bot",
+        botToken: cfg.str("transport.telegram_bot_token") || undefined,
       });
 
     case "snapchat": {
@@ -69,6 +75,7 @@ export async function createTransport(cfg: Config): Promise<Transport> {
         client,
         label: `snapchat:${backend}`,
         voice: spec.voice,
+        images: spec.images,
         pollIntervalMs: cfg.num("transport.poll_interval_ms") || 3000,
       });
     }

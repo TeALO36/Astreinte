@@ -1,5 +1,6 @@
 {
-  "schema": "https://lochor.dev/schema/plugin.json/v0.1",
+  "$schema": "https://locaryn.dev/schema/plugin.json/v0.1",
+  "schema": "https://locaryn.dev/schema/plugin.json/v0.1",
   "apiVersion": "0.1",
   "name": "snap-astreinte",
   "version": "0.1.0",
@@ -11,26 +12,76 @@
     "chatbot",
     "tts",
     "mcp",
+    "telegram",
     "messaging"
   ],
   "permissions": {
     "network": {
-      "reason": "Recevoir et envoyer les messages sur le canal configuré, et appeler le LLM et le TTS",
+      "reason": "Recevoir et envoyer les messages sur le canal configuré, se connecter à Telegram (QR ou jeton de bot), et appeler le LLM et le TTS",
       "scope": "always"
     },
     "shell": {
-      "reason": "Lancer la commande TTS locale quand la synthèse vocale est en mode commande",
+      "reason": "Lancer la commande TTS locale quand la synthèse vocale est en mode commande, et convertir l'audio avec ffmpeg",
       "scope": "always"
     },
     "env": [
       "SNAP_ASTREINTE_TELEGRAM_API_ID",
       "SNAP_ASTREINTE_TELEGRAM_API_HASH",
       "SNAP_ASTREINTE_TELEGRAM_SESSION_FILE",
+      "SNAP_ASTREINTE_TELEGRAM_AUTH_TYPE",
+      "SNAP_ASTREINTE_TELEGRAM_BOT_TOKEN",
+      "SNAP_ASTREINTE_IMAGE_API_KEY",
       "SNAP_ASTREINTE_LLM_API_KEY"
     ]
   },
   "components": {
     "mcp": "mcp/mcp.json"
+  },
+  "ui_contributions": {
+    "settings_sections": [
+      {
+        "id": "canal",
+        "label": "Canal",
+        "fields": [
+          { "key": "transport.driver", "label": "Canal de messagerie", "type": "select", "options": ["telegram", "snapchat"] },
+          { "key": "transport.telegram_auth", "label": "Connexion Telegram", "type": "select", "options": ["account", "bot"], "hint": "Compte personnel (api_id/api_hash + session) ou bot (jeton seul)." },
+          { "key": "transport.telegram_api_id", "label": "Identifiant API (api_id)", "type": "number", "hint": "Créé sur my.telegram.org → API development tools." },
+          { "key": "transport.telegram_api_hash", "label": "Clé API (api_hash)", "type": "string", "hint": "Obtenue sur my.telegram.org avec l'api_id." },
+          { "key": "transport.telegram_bot_token", "label": "Jeton de bot (mode bot)", "type": "string", "hint": "Jeton de @BotFather. En mode bot, aucune session à créer." },
+          { "key": "transport.telegram_session_file", "label": "Fichier de session", "type": "string" }
+        ]
+      },
+      {
+        "id": "image",
+        "label": "Images",
+        "fields": [
+          { "key": "image.mode", "label": "Images en réponse", "type": "select", "options": ["on_request", "never"] },
+          { "key": "image.engine", "label": "Moteur de génération", "type": "select", "options": ["http", "command"] },
+          { "key": "image.base_url", "label": "Endpoint d'images", "type": "string", "hint": "Racine du serveur, sans /images/generations." },
+          { "key": "image.model", "label": "Modèle d'image", "type": "string" },
+          { "key": "image.size", "label": "Taille", "type": "string" },
+          { "key": "image.command", "label": "Commande locale", "type": "string" }
+        ]
+      },
+      {
+        "id": "voix",
+        "label": "Notes vocales",
+        "fields": [
+          { "key": "voice.mode", "label": "Notes vocales", "type": "select", "options": ["on_request", "always", "never"] },
+          { "key": "voice.tts_mode", "label": "Moteur de synthèse", "type": "select", "options": ["http", "command", "disabled"] },
+          { "key": "voice.tts_url", "label": "URL du serveur TTS", "type": "string" },
+          { "key": "voice.tts_voice", "label": "Voix", "type": "string" }
+        ]
+      },
+      {
+        "id": "alertes",
+        "label": "Alertes",
+        "fields": [
+          { "key": "notify.enabled", "label": "Me prévenir sur Telegram", "type": "boolean" },
+          { "key": "notify.telegram_chat_id", "label": "Où envoyer les alertes", "type": "string", "hint": "« me » pour vos Messages enregistrés." }
+        ]
+      }
+    ]
   },
   "config": {
     "schema": {
@@ -212,6 +263,69 @@
         "default": "",
         "group": "Voix"
       },
+      "image.mode": {
+        "type": "select",
+        "title": "Images en réponse",
+        "description": "À la demande : si l'interlocuteur demande une image, une photo, un dessin ou un logo, le persona génère l'image et l'envoie. Jamais : réponse texte uniquement.",
+        "options": [
+          "on_request",
+          "never"
+        ],
+        "optionLabels": [
+          "Quand on en demande une",
+          "Jamais"
+        ],
+        "default": "on_request",
+        "group": "Image"
+      },
+      "image.engine": {
+        "type": "select",
+        "title": "Moteur de génération",
+        "options": [
+          "http",
+          "command"
+        ],
+        "optionLabels": [
+          "Serveur HTTP compatible OpenAI",
+          "Commande locale"
+        ],
+        "description": "HTTP : endpoint /v1/images/generations (Stable Diffusion WebUI, ComfyUI, etc.). Commande : un script local qui reçoit {prompt} et produit {out}.",
+        "default": "http",
+        "group": "Image"
+      },
+      "image.base_url": {
+        "type": "string",
+        "title": "Endpoint d'images",
+        "description": "Racine du serveur, sans /images/generations : on l'y ajoute automatiquement.",
+        "default": "http://127.0.0.1:8080/v1",
+        "group": "Image"
+      },
+      "image.model": {
+        "type": "string",
+        "title": "Modèle d'image",
+        "default": "",
+        "group": "Image"
+      },
+      "image.api_key": {
+        "type": "secret",
+        "title": "Clé d'API",
+        "description": "Inutile pour un serveur local. Peut aussi venir de SNAP_ASTREINTE_IMAGE_API_KEY.",
+        "default": "",
+        "group": "Image"
+      },
+      "image.size": {
+        "type": "string",
+        "title": "Taille de l'image",
+        "default": "1024x1024",
+        "group": "Image"
+      },
+      "image.command": {
+        "type": "string",
+        "title": "Commande locale",
+        "description": "Utilisée en mode « commande ». {prompt} = prompt à générer, {out} = fichier image à produire.",
+        "default": "",
+        "group": "Image"
+      },
       "llm.base_url": {
         "type": "string",
         "title": "Endpoint du modèle",
@@ -290,10 +404,32 @@
         "default": "",
         "group": "Canal"
       },
+      "transport.telegram_auth": {
+        "type": "select",
+        "title": "Connexion Telegram",
+        "description": "Compte personnel : api_id/api_hash sur my.telegram.org + session (QR ou téléphone). Bot : seul le jeton de @BotFather suffit, la session se crée toute seule au premier démarrage.",
+        "options": [
+          "account",
+          "bot"
+        ],
+        "optionLabels": [
+          "Compte personnel",
+          "Bot (jeton)"
+        ],
+        "default": "account",
+        "group": "Canal"
+      },
+      "transport.telegram_bot_token": {
+        "type": "secret",
+        "title": "Jeton de bot",
+        "description": "Mode bot uniquement. Jeton obtenu auprès de @BotFather. Peut aussi venir de la variable SNAP_ASTREINTE_TELEGRAM_BOT_TOKEN.",
+        "default": "",
+        "group": "Canal"
+      },
       "transport.telegram_api_id": {
         "type": "number",
         "title": "Identifiant API (api_id)",
-        "description": "Votre compte Telegram personnel : créez api_id/api_hash sur https://my.telegram.org, puis lancez « npm run telegram:login ». Aucun bot, aucune API officielle.",
+        "description": "Votre compte Telegram personnel : créez api_id/api_hash sur https://my.telegram.org, puis lancez « npm run telegram:login » (ou la connexion par QR). Aucun bot, aucune API officielle.",
         "default": 0,
         "min": 1,
         "group": "Canal"

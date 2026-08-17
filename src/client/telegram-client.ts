@@ -24,6 +24,7 @@ import type {
 } from "./types.js";
 import { toOpus } from "../audio/opus.js";
 import {
+  ensureSessionAuthorized,
   loadSessionString,
   resolveTelegramSession,
   type ResolvedTelegramSession,
@@ -77,6 +78,10 @@ export interface TelegramClientConfig {
   apiHash?: string;
   sessionString?: string;
   sessionFile?: string;
+  /** "account" (compte personnel) ou "bot" (jeton). Défaut : account. */
+  authType?: "account" | "bot";
+  /** Jeton de bot, utilisé en mode « bot » quand aucune session n'existe. */
+  botToken?: string;
   connectionRetries?: number;
 }
 
@@ -98,18 +103,23 @@ export class TelegramSnapchatClient implements SnapchatClient {
 
   private async ensureClient(): Promise<GramJsTelegramClient> {
     if (this.client) return this.client;
+
+    // En mode bot, aucun fichier de session n'est requis : le jeton suffit et
+    // ensureSessionAuthorized crée l'authentification au premier démarrage.
+    let sessionString = "";
+    try {
+      sessionString = this.loadSession();
+    } catch (e) {
+      if (this.session.authType !== "bot" || !this.session.botToken) throw e;
+    }
+
     const client = new GramJsTelegramClient(
-      new StringSession(this.loadSession()),
+      new StringSession(sessionString),
       this.session.apiId,
       this.session.apiHash,
       { connectionRetries: this.connectionRetries },
     );
-    await client.connect();
-    if (!(await client.checkAuthorization())) {
-      throw new Error(
-        "The Telegram session is not authorized. Run npm run telegram:login to create a fresh session.",
-      );
-    }
+    await ensureSessionAuthorized(client, this.session);
     this.client = client;
     return client;
   }

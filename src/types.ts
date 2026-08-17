@@ -65,5 +65,7 @@ export interface LogEntry {
   verdict: PolicyVerdict["action"];
   reason?: string;
   voice: boolean;
+  /** Une image a été envoyée en réponse. */
+  image?: boolean;
   error?: string;
 }

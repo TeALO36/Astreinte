@@ -8,7 +8,16 @@
     "snap-astreinte": "./dist/index.js"
   },
   "main": "./dist/index.js",
-  "files": ["dist", "scripts", "Lancer-Banc-SnapMCP.bat", "Lancer-VMs-Android.bat", "plugin.json", ".claude-plugin", "gemini-extension.json", "README.md"],
+  "files": [
+    "dist",
+    "scripts",
+    "Lancer-Banc-SnapMCP.bat",
+    "Lancer-VMs-Android.bat",
+    "plugin.json",
+    ".claude-plugin",
+    "gemini-extension.json",
+    "README.md"
+  ],
   "engines": {
     "node": ">=20"
   },
@@ -26,7 +35,9 @@
     "android:vms:stop": "node scripts/android-vms.mjs --check-only --quit-after-check",
     "smoke": "node scripts/smoke-test.mjs",
     "telegram:login": "node scripts/telegram-login.mjs",
-    "test": "tsc && node --test --test-timeout=25000 --test-force-exit dist/snap-astreinte.test.js dist/e2e.test.js dist/client-adapter.test.js && node scripts/smoke-test.mjs",
+    "telegram:login:qr": "node scripts/telegram-login.mjs --qr",
+    "telegram:login:bot": "node scripts/telegram-login.mjs --bot",
+    "test": "tsc && node --test --test-timeout=25000 --test-force-exit dist/snap-astreinte.test.js dist/e2e.test.js dist/client-adapter.test.js dist/persona-image.test.js dist/login-flow.test.js && node scripts/smoke-test.mjs",
     "check": "node dist/index.js check"
   },
   "keywords": [
@@ -44,11 +55,13 @@
     "@modelcontextprotocol/sdk": "^1.0.0",
     "@modelcontextprotocol/server": "^2.0.0",
     "playwright": "^1.62.1",
+    "qrcode": "^1.5.4",
     "telegram": "^2.26.22",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "@types/qrcode": "^1.5.6",
     "typescript": "^5.7.0"
   }
 }

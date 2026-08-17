@@ -17,8 +17,13 @@ persona peut être n'importe qui : un assistant commercial, un prof, un
 personnage de fiction…
 
 Rien n'est propre à un canal ni à une application. C'est un serveur MCP qui
-tourne aussi bien sous Lochor, Claude Code ou Gemini CLI, et le canal de
+tourne aussi bien sous Locaryn, Claude Code ou Gemini CLI, et le canal de
 discussion est un driver interchangeable : **Telegram ou Snapchat, au choix**.
+
+> **Dans Locaryn** : l'extension s'installe en collant l'adresse du dépôt dans
+> Réglages → Extensions, et tout ce que montre le banc de test se retrouve dans
+> les réglages de l'extension (formulaire de connexion) et dans le chat
+> (outils MCP). Voir [`docs/LOCARYN.md`](docs/LOCARYN.md).
 
 ## Installation
 
@@ -51,6 +56,10 @@ node dist/index.js daemon    # le persona tourne
 | `npm run test` | compile puis lance les deux suites de tests (`dist/*.test.js`). |
 | `npm run dev` | recompile en continu pendant le développement (`tsc --watch`). |
 | `npm run start` | lance le démon depuis `dist/` (`node dist/index.js daemon`). |
+| `npm run test-bench` | ouvre le banc de test local (diagnostic, connexion Telegram, envois réels). |
+| `npm run telegram:login` | connexion compte personnel (téléphone + code). |
+| `npm run telegram:login:qr` | connexion compte personnel par **QR code** (scan avec le téléphone). |
+| `npm run telegram:login:bot` | connexion **bot** avec son jeton (`--bot <jeton>`). |
 | `npm run android:vms` | démarre les trois VM Android du banc et ouvre le Play Store sur chacune. |
 
 ## Les deux modes
@@ -80,10 +89,11 @@ Les valeurs sont stockées dans `$SNAP_ASTREINTE_HOME/config.json`
 (`~/.astreinte/` par défaut). Les secrets peuvent rester hors du fichier via
 l'environnement : `SNAP_ASTREINTE_TELEGRAM_API_ID`,
 `SNAP_ASTREINTE_TELEGRAM_API_HASH`, `SNAP_ASTREINTE_TELEGRAM_SESSION_FILE`,
+`SNAP_ASTREINTE_TELEGRAM_AUTH_TYPE`, `SNAP_ASTREINTE_TELEGRAM_BOT_TOKEN`,
 `SNAP_ASTREINTE_LLM_API_KEY`.
 
-Sept groupes : **Personnalité**, **Garde-fous**, **Voix**, **Modèle**, **Canal**,
-**Alertes**, **Contexte**.
+Huit groupes : **Personnalité**, **Garde-fous**, **Voix**, **Image**, **Modèle**,
+**Canal**, **Alertes**, **Contexte**.
 
 ### Le mode sans limite
 
@@ -111,33 +121,57 @@ Un canal est un driver qui implémente `Transport` (`src/transports/types.ts`) :
 `start`, `stop`, `sendText`, `sendVoice`. Rien d'autre dans l'extension ne sait
 sur quel canal elle tourne.
 
-### Telegram — votre compte personnel, pas un bot
+### Telegram — votre compte personnel (ou un bot), rien à payer
 
-Aucun jeton de bot, aucune API officielle, aucun intermédiaire : le canal parle
-via **votre compte Telegram personnel**, par MTProto (GramJS). Le compte
-apparaît comme un compte utilisateur normal — jamais avec le badge « bot » — et
-peut lire et répondre dans vos conversations réelles.
+Aucune API officielle payante, aucun intermédiaire, aucun prestataire : le
+canal parle par **MTProto** (GramJS), soit avec **votre compte Telegram
+personnel** — qui apparaît comme un compte utilisateur normal, jamais avec le
+badge « bot », et peut lire et répondre dans vos conversations réelles — soit
+avec un **bot**, si vous préférez.
 
-Mise en place en deux étapes, une seule fois :
+Le canal sait **lire les messages** (réception en push + rattrapage des
+non-lus), **envoyer du texte, des images et des vidéos** (photos conservées,
+10 secondes ou vue unique) et **envoyer de vraies notes vocales** (OGG/Opus,
+avec forme d'onde — pas des fichiers audio).
+
+#### Compte personnel — trois étapes, une seule fois
 
 1. Créez vos identifiants sur **https://my.telegram.org** → « API development
    tools » : notez `api_id` et `api_hash`.
-2. Lancez la connexion interactive : `npm run telegram:login`. Vous entrez
-   votre numéro, le code reçu dans Telegram (et le mot de passe 2FA s'il est
-   activé) ; la session est écrite dans `.telegram/session.txt` et ne doit
-   jamais être commitée.
+2. Connectez-vous, au choix :
+   - **QR code** (le plus simple) : `npm run telegram:login:qr`, scannez le
+     QR avec l'application Telegram sur votre téléphone ;
+   - ou **téléphone + code** : `npm run telegram:login` ;
+   - ou depuis le **banc de test** (`npm run test-bench`), bouton
+     « Se connecter par QR (compte) ».
+3. Renseignez dans la configuration du canal : `transport.driver = telegram`,
+   `transport.telegram_auth = account`, `transport.telegram_api_id`,
+   `transport.telegram_api_hash`, `transport.telegram_session_file`.
 
-Puis renseignez dans la configuration du canal :
+La session est écrite dans `$SNAP_ASTREINTE_HOME/.telegram/session.txt`
+(`~/.snap-astreinte/.telegram/session.txt` en ligne de commande, `/.data/.telegram/session.txt`
+sous Locaryn) et ne doit jamais être commitée. Les secrets peuvent aussi
+passer par l'environnement (`SNAP_ASTREINTE_TELEGRAM_API_ID`, `_API_HASH`,
+`_SESSION_FILE`).
 
-- `transport.telegram_api_id` — l'identifiant de l'étape 1,
-- `transport.telegram_api_hash` — la clé de l'étape 1,
-- `transport.telegram_session_file` — le fichier de session (défaut
-  `.telegram/session.txt`),
-- `transport.driver = telegram`.
+**Depuis Locaryn**, la connexion se lance dans le chat : demandez à
+l'assistant « connecte mon compte Telegram ». Il appelle `telegram_login_qr`,
+vous ouvre le lien (`t.me/login/…`) à confirmer sur votre téléphone, et
+vérifie jusqu'à ce que la session soit enregistrée (le mot de passe 2FA passe
+par `telegram_login_password`, un bot par `telegram_login_bot`).
 
-Ou passez les secrets par l'environnement (`SNAP_ASTREINTE_TELEGRAM_API_ID`,
-`SNAP_ASTREINTE_TELEGRAM_API_HASH`, `SNAP_ASTREINTE_TELEGRAM_SESSION_FILE`) pour
-les garder hors du fichier de config.
+#### Bot — un jeton et c'est tout
+
+Mettez `transport.telegram_auth = bot` et collez le jeton de @BotFather dans
+`transport.telegram_bot_token`. **Aucune session à créer** : la première
+utilisation s'authentifie avec le jeton et enregistre la session toute seule.
+
+> **Pourquoi MTProto et pas l'API Bot ?** Un bot ne peut pas lire ni répondre
+> dans une conversation où il n'a pas été ajouté, et ne prend jamais
+> l'identité d'un compte. Le compte personnel fait tout ce qu'un compte
+> utilisateur fait. La liste des bibliothèques MTProto utilisables et le
+> guide de bascule (Telethon, Pyrogram, MTKruto, MadelineProto) sont dans
+> [`docs/TELEGRAM-LIBRARIES.md`](docs/TELEGRAM-LIBRARIES.md).
 
 > **Avertissements**
 >
@@ -170,8 +204,13 @@ local :
 | `POST /send` | `{ contactId, text }` |
 | `POST /sendVoice` | `{ contactId, audioBase64, mimeType }` |
 
-Le contrat détaillé est en tête de `src/transports/bridge.ts`. Deux points sur
-lesquels un pont se plante en général :
+Le contrat détaillé est en tête de `src/transports/bridge.ts`. Un pont
+**Telegram prêt à l'emploi** (Telethon, compte personnel ou bot, QR, notes
+vocales) vit dans [`bridge-telethon/`](bridge-telethon/) : c'est la
+démonstration de la bascule de bibliothèque MTProto, voir
+[`docs/TELEGRAM-LIBRARIES.md`](docs/TELEGRAM-LIBRARIES.md).
+
+Deux points sur lesquels un pont se plante en général :
 
 - **`contactId` doit être stable et unique par personne.** C'est la clé du
   contexte. Un identifiant dérivé du nom d'affichage change dès que la personne
@@ -197,6 +236,27 @@ Deux moteurs, parce qu'aucun n'est universel :
 `voice.mode` vaut `on_request` (détection des « tu peux me faire un vocal »),
 `always` ou `never`. Une synthèse qui échoue ne fait jamais perdre la réponse :
 elle part en texte, et la raison est journalisée.
+
+## Images
+
+Le persona sait aussi **envoyer une image en réponse** quand on lui en demande
+une (« envoie-moi une photo de chat », « génère un logo »…). Le modèle écrit
+le prompt de génération, un moteur local produit l'image, et elle part en
+photo avec une courte légende.
+
+Deux moteurs, comme pour la voix :
+
+- `image.engine = http` — un serveur exposant `/v1/images/generations`
+  (Stable Diffusion WebUI, ComfyUI, …), configuré par `image.base_url`,
+  `image.model`, `image.size`.
+- `image.engine = command` — une commande locale dont le gabarit reçoit
+  `{prompt}` et `{out}`.
+
+`image.mode` vaut `on_request` (défaut) ou `never`. Une génération qui échoue
+ne fait jamais perdre la réponse : la légende part en texte, et la raison est
+journalisée. Le canal doit savoir envoyer une photo (Telegram oui, un pont
+HTTP sans route média non) pour que la directive entre dans le prompt du
+modèle.
 
 ## Alertes
 

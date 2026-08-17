@@ -29,8 +29,12 @@
 import { TelegramClient, Api, sessions } from "telegram";
 import { NewMessage, type NewMessageEvent } from "telegram/events/NewMessage.js";
 import { spawn } from "node:child_process";
+import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { IncomingMessage } from "../types.js";
 import {
+  ensureSessionAuthorized,
   loadSessionString,
   resolveTelegramSession,
   type ResolvedTelegramSession,
@@ -63,7 +67,7 @@ type TelegramMessage = {
 
 export class TelegramTransport implements Transport {
   readonly id = "telegram";
-  readonly capabilities: TransportCapabilities = { voice: true, typing: true };
+  readonly capabilities: TransportCapabilities = { voice: true, images: true, typing: true };
 
   private readonly session: ResolvedTelegramSession;
   private client: TelegramClient | null = null;
@@ -79,18 +83,23 @@ export class TelegramTransport implements Transport {
 
   private async ensureClient(): Promise<TelegramClient> {
     if (this.client) return this.client;
+
+    // En mode bot, aucun fichier de session n'est requis : le jeton suffit et
+    // ensureSessionAuthorized crée l'authentification au premier démarrage.
+    let sessionString = "";
+    try {
+      sessionString = loadSessionString(this.session);
+    } catch (e) {
+      if (this.session.authType !== "bot" || !this.session.botToken) throw e;
+    }
+
     const client = new TelegramClient(
-      new StringSession(loadSessionString(this.session)),
+      new StringSession(sessionString),
       this.session.apiId,
       this.session.apiHash,
       { connectionRetries: 5 },
     );
-    await client.connect();
-    if (!(await client.checkAuthorization())) {
-      throw new TransportError(
-        "Session Telegram non autorisée. Relancez « npm run telegram:login » pour en créer une neuve.",
-      );
-    }
+    await ensureSessionAuthorized(client, this.session);
     this.client = client;
     return client;
   }
@@ -273,6 +282,41 @@ export class TelegramTransport implements Transport {
     await client.sendFile(contactId, { file: payload, voiceNote: true });
   }
 
+  async sendImage(
+    contactId: string,
+    media: Buffer | string,
+    mimeType: string,
+    caption?: string,
+  ): Promise<void> {
+    const client = await this.ensureClient();
+
+    // Un buffer nu n'a pas d'extension : Telegram décide photo/fichier au nom.
+    // On le matérialise dans un fichier temporaire nommé d'après son type pour
+    // qu'il parte bien en photo, puis on supprime le fichier.
+    if (Buffer.isBuffer(media)) {
+      const dir = mkdtempSync(join(tmpdir(), "snap-astreinte-image-"));
+      const extension = extensionForImage(mimeType);
+      const path = join(dir, `image${extension}`);
+      try {
+        writeFileSync(path, media);
+        await client.sendFile(contactId, {
+          file: path,
+          caption: caption ?? "",
+          forceDocument: false,
+        });
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+      return;
+    }
+
+    await client.sendFile(contactId, {
+      file: media,
+      caption: caption ?? "",
+      forceDocument: false,
+    });
+  }
+
   async setTyping(contactId: string, on: boolean): Promise<void> {
     if (!on) return;
     const client = await this.ensureClient();
@@ -285,6 +329,16 @@ export class TelegramTransport implements Transport {
       )
       .catch(() => undefined);
   }
+}
+
+/** Extension de fichier selon le type MIME, pour l'envoi d'une image. */
+function extensionForImage(mimeType: string): string {
+  const m = mimeType.toLowerCase();
+  if (m.includes("jpeg") || m.includes("jpg")) return ".jpg";
+  if (m.includes("webp")) return ".webp";
+  if (m.includes("gif")) return ".gif";
+  if (m.includes("bmp")) return ".bmp";
+  return ".png";
 }
 
 /** Convertit vers OGG/Opus via ffmpeg. Rejette si ffmpeg est absent. */

@@ -26,6 +26,8 @@ import type { IncomingMessage } from "../types.js";
 export interface TransportCapabilities {
   /** Le canal sait envoyer une note vocale. */
   voice: boolean;
+  /** Le canal sait envoyer une image (photo, pas un fichier joint). */
+  images: boolean;
   /** Le canal sait afficher un indicateur « en train d'écrire ». */
   typing: boolean;
 }
@@ -46,6 +48,17 @@ export interface Transport {
    * le format audio n'est pas accepté par le canal.
    */
   sendVoice(contactId: string, audio: Buffer, mimeType: string): Promise<void>;
+
+  /**
+   * Envoie une image. `media` est un buffer (déjà décodé) ou un chemin local /
+   * une URL. Doit lever si `capabilities.images` est faux.
+   */
+  sendImage(
+    contactId: string,
+    media: Buffer | string,
+    mimeType: string,
+    caption?: string,
+  ): Promise<void>;
 
   /** Optionnel : indicateur de frappe pendant la génération de la réponse. */
   setTyping?(contactId: string, on: boolean): Promise<void>;

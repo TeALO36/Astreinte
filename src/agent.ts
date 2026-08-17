@@ -13,6 +13,7 @@
  */
 
 import { Config } from "./config.js";
+import { ImageGen, ImageError, asksForImage, extractImageRequest } from "./image.js";
 import { Llm, LlmError, type ChatMessage } from "./llm.js";
 import { Notifier } from "./notifier.js";
 import { Policy } from "./policy.js";
@@ -27,6 +28,7 @@ export class Agent {
   readonly store: ContactStore;
   readonly policy: Policy;
   readonly tts: Tts;
+  readonly imageGen: ImageGen;
   private llm: Llm;
   private notifier: Notifier;
   private log: LogEntry[] = [];
@@ -38,6 +40,7 @@ export class Agent {
     this.store = new ContactStore(cfg.num("context.max_history_turns") || 20);
     this.policy = new Policy(cfg);
     this.tts = new Tts(cfg);
+    this.imageGen = new ImageGen(cfg);
     this.notifier = new Notifier(cfg);
     this.llm = new Llm({
       baseUrl: cfg.str("llm.base_url"),
@@ -52,8 +55,23 @@ export class Agent {
     return this.log.slice(-limit);
   }
 
+  /**
+   * Une demande d'image peut-elle être traitée ici ? Le mode doit le permettre,
+   * le canal doit savoir envoyer une photo, et un moteur d'image doit être
+   * configuré — sinon la directive IMAGE: n'entre jamais dans le prompt, et le
+   * modèle ne s'embarque pas dans une promesse qu'on ne pourrait pas tenir.
+   */
+  private canSendImage(incomingText: string): boolean {
+    return (
+      this.cfg.str("image.mode") !== "never" &&
+      this.transport.capabilities.images &&
+      this.imageGen.available &&
+      asksForImage(incomingText)
+    );
+  }
+
   /** Instructions système, reconstruites à chaque message : la config peut bouger. */
-  buildSystemPrompt(ctx: ContactContext): string {
+  buildSystemPrompt(ctx: ContactContext, incomingText = ""): string {
     const parts: string[] = [];
 
     const style = this.cfg.str("persona.style").trim();
@@ -85,11 +103,20 @@ export class Agent {
       "Tu écris dans une messagerie : pas de titres, pas de listes à puces longues, pas de mise en forme markdown. Des phrases courtes, comme un message qu'on lit sur un téléphone.",
     );
 
+    if (this.canSendImage(incomingText)) {
+      parts.push(
+        "Ton interlocuteur demande une image. Commence ta réponse par « IMAGE: » " +
+          "suivi d'un prompt de génération d'image détaillé (une ou deux phrases, " +
+          "en anglais de préférence pour un meilleur rendu), puis saute une ligne " +
+          "et ajoute une courte légende ou un mot en texte.",
+      );
+    }
+
     return parts.join("\n\n");
   }
 
   private messagesFor(ctx: ContactContext, incoming: string): ChatMessage[] {
-    const msgs: ChatMessage[] = [{ role: "system", content: this.buildSystemPrompt(ctx) }];
+    const msgs: ChatMessage[] = [{ role: "system", content: this.buildSystemPrompt(ctx, incoming) }];
     for (const turn of ctx.turns) {
       msgs.push({ role: turn.role, content: turn.content });
     }
@@ -174,6 +201,36 @@ export class Agent {
         delete ctx.pendingText;
         delete ctx.pendingSince;
         entry.outgoing = reply;
+
+        // Une demande d'image se solde par l'envoi de l'image : le modèle a
+        // commencé sa réponse par « IMAGE: » et le prompt de génération. Le
+        // texte qui suit le marqueur part en légende de la photo.
+        if (this.canSendImage(incoming.text)) {
+          const imageRequest = extractImageRequest(reply);
+          if (imageRequest) {
+            try {
+              const clip = await this.imageGen.generate(imageRequest.prompt);
+              await this.transport.sendImage(
+                ctx.contactId,
+                clip.image,
+                clip.mimeType,
+                imageRequest.textAfter,
+              );
+              entry.image = true;
+              return;
+            } catch (e) {
+              // Une image ratée ne doit pas faire perdre la réponse : on
+              // renvoie le texte qui l'accompagnait, ou la réponse complète.
+              console.error(`[snap-astreinte] image indisponible, repli texte : ${(e as Error).message}`);
+              entry.reason = `image indisponible : ${(e as Error).message}`;
+              if (!(e instanceof ImageError)) throw e;
+              if (imageRequest.textAfter) {
+                await this.transport.sendText(ctx.contactId, imageRequest.textAfter);
+                return;
+              }
+            }
+          }
+        }
 
         if (this.wantsVoice(incoming, reply)) {
           try {
