@@ -30,6 +30,8 @@
     "mcp": "node dist/index.js mcp",
     "snapmcp": "node dist/snapmcp.js",
     "test-bench": "node scripts/test-bench-app.mjs",
+    "android:provision": "node scripts/android-provision.mjs",
+    "android:screen": "node scripts/android-screen.mjs",
     "android:vms": "node scripts/android-vms.mjs",
     "android:vms:headless": "node scripts/android-vms.mjs --no-window",
     "android:vms:stop": "node scripts/android-vms.mjs --check-only --quit-after-check",

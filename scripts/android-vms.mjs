@@ -15,9 +15,21 @@
 // indiqué en fin de sortie.
 
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
+import {
+  ADB,
+  ANDROID_HOME,
+  EMULATOR,
+  adb,
+  checkSdk,
+  listAvds,
+  parseDevices,
+  run,
+  shell,
+  sleep,
+} from "./lib/android.mjs";
 
 const VMS = [
   { name: "SnapMCP_API35", port: 5554, label: "Pixel 5 — API 35 (Google Play)" },
@@ -26,22 +38,6 @@ const VMS = [
 ];
 
 const PLUGIN = /(com\.android\.vending|com\.google\.android\.finsky)/;
-
-function sdkRoot() {
-  const candidates = [
-    process.env.ANDROID_HOME,
-    process.env.ANDROID_SDK_ROOT,
-    process.platform === "win32" ? join(process.env.LOCALAPPDATA || "", "Android", "Sdk") : null,
-    join(homedir(), "Android", "Sdk"),
-    "/usr/lib/android-sdk",
-    "/opt/android-sdk",
-  ].filter(Boolean);
-  return candidates.find((p) => existsSync(p)) || null;
-}
-
-const ANDROID_HOME = sdkRoot();
-const ADB = ANDROID_HOME ? join(ANDROID_HOME, "platform-tools", `adb${process.platform === "win32" ? ".exe" : ""}`) : "adb";
-const EMULATOR = ANDROID_HOME ? join(ANDROID_HOME, "emulator", `emulator${process.platform === "win32" ? ".exe" : ""}`) : "emulator";
 
 const args = process.argv.slice(2);
 const opts = {
@@ -52,37 +48,6 @@ const opts = {
   memory: Number(args[args.indexOf("--memory") + 1]) || 1536,
   bootTimeoutMs: Number(args[args.indexOf("--boot-timeout") + 1]) || 300000,
 };
-
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-function run(cmd, cmdArgs, timeoutMs = 30000) {
-  return new Promise((resolve) => {
-    let out = "";
-    let err = "";
-    let done = false;
-    const timer = setTimeout(() => {
-      if (!done) { done = true; resolve({ ok: false, code: null, stdout: out, stderr: err, timedOut: true }); child.kill(); }
-    }, timeoutMs);
-    let child;
-    try {
-      child = spawn(cmd, cmdArgs, { windowsHide: true });
-    } catch (e) {
-      clearTimeout(timer);
-      return resolve({ ok: false, code: null, stdout: "", stderr: e.message });
-    }
-    child.stdout.on("data", (d) => { out += d; });
-    child.stderr.on("data", (d) => { err += d; });
-    child.on("error", (e) => {
-      if (!done) { done = true; clearTimeout(timer); resolve({ ok: false, code: null, stdout: out, stderr: e.message }); }
-    });
-    child.on("close", (code) => {
-      if (!done) { done = true; clearTimeout(timer); resolve({ ok: code === 0, code, stdout: out, stderr: err }); }
-    });
-  });
-}
-
-const adb = (serial, cmdArgs, timeoutMs) => run(ADB, ["-s", serial, ...cmdArgs], timeoutMs);
-const shell = (serial, command, timeoutMs) => adb(serial, ["shell", command], timeoutMs);
 
 async function waitForBoot(serial) {
   const deadline = Date.now() + opts.bootTimeoutMs;
@@ -155,27 +120,17 @@ async function screenshot(serial, file) {
   try { writeFileSync(file, Buffer.concat(chunks)); return true; } catch { return false; }
 }
 
-function parseDevices(stdout) {
-  return stdout
-    .split(/\r?\n/)
-    .slice(1)
-    .map((l) => l.trim().split(/\s+/))
-    .filter((p) => p.length >= 2 && p[0])
-    .map((p) => ({ serial: p[0], state: p[1] }));
-}
-
-async function listAvds() {
-  const r = await run(EMULATOR, ["-list-avds"]);
-  return r.ok ? r.stdout.split(/\r?\n/).map((l) => l.trim()).filter(Boolean) : [];
-}
-
 async function main() {
   console.log("=".repeat(72));
   console.log("Machines virtuelles Android — banc de test SnapMCP");
   console.log("=".repeat(72));
 
-  if (!ANDROID_HOME || !existsSync(EMULATOR)) {
-    console.error("ERREUR : SDK Android introuvable (ANDROID_HOME absent ou emulator manquant).");
+  // Le contrôle partagé distingue ce qui manque : l'ancien message accusait
+  // ANDROID_HOME même quand le SDK était bien là et que seul l'émulateur
+  // manquait, ce qui envoyait chercher au mauvais endroit.
+  const sdk = checkSdk({ needEmulator: true });
+  if (!sdk.ok) {
+    console.error(`ERREUR : ${sdk.raison}`);
     process.exit(1);
   }
   console.log(`SDK   : ${ANDROID_HOME}`);
@@ -186,6 +141,7 @@ async function main() {
   const missing = VMS.filter((vm) => !installedAvds.includes(vm.name));
   if (missing.length) {
     console.error(`ERREUR : AVD manquants : ${missing.map((m) => m.name).join(", ")}`);
+    console.error("Créez-les : npm run android:provision -- --all");
     process.exit(1);
   }
 
@@ -272,7 +228,7 @@ async function main() {
   console.log(`\n${running}/${total} machines virtuelles opérationnelles, Play Store ouvert.`);
   if (opts.quitAfterCheck) {
     for (const vm of VMS) {
-      await run(ADB, ["-s", `emulator-${vm.port}`, "emu", "kill"], 15000);
+      await adb(`emulator-${vm.port}`, ["emu", "kill"], 15000);
     }
   }
   process.exit(allOk ? 0 : 1);
