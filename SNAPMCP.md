@@ -33,6 +33,8 @@ Aucune variable n'est requise en mode mock (défaut).
 | Variable | Valeurs | Description |
 |---|---|---|
 | `SNAPCHAT_CLIENT` | `mock` (défaut) · `web` · `adb` · `telegram` | Sélectionne le backend de chat |
+| `SNAPCHAT_EMAIL` | e-mail ou nom d'utilisateur | Client web : connexion automatique par identifiants (`npm run snapchat:login`, ou fichier `.env` lu au démarrage) |
+| `SNAPCHAT_PASSWORD` | secret | Client web : mot de passe du compte ; jamais commité (`.env` ignoré par git) |
 | `SNAPCHAT_HEADLESS` | `1` (défaut) · `0` | Client web : `0` = navigateur visible (1er run, scan QR) · `1`/absent = headless |
 | `ADB_SERIAL` | ex. `R58M1234ABC` | Client ADB : serial du device (`adb devices`) ; vide = device unique connecté |
 | `SNAPCHAT_SESSION_TOKEN` | (réservé) | Futur client API reverse-engineered |
@@ -61,6 +63,10 @@ npm run dev
 
 # Test rapide (exercice des tools MCP sur le mock)
 npm run smoke
+
+# Connexion Snapchat Web par identifiants (une fois ; lit SNAPCHAT_EMAIL /
+# SNAPCHAT_PASSWORD dans l'environnement ou dans extension/.env)
+npm run snapchat:login
 ```
 
 ## 🖥️ Configuration Freebuff Preview
@@ -105,6 +111,7 @@ Ajoute ce bloc à la config de ton client MCP :
 | `get_conversations` | Liste des conversations |
 | `get_conversation` | Détail d'une conversation |
 | `get_messages` | Messages d'une conversation |
+| `get_media` | Télécharger le média (image, vidéo, audio) d'un message reçu |
 | `mark_as_read` | Marquer comme lu |
 | `list_friends` | Liste des amis |
 | `get_friend` | Profil d'un ami |

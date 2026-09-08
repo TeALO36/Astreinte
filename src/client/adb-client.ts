@@ -28,11 +28,15 @@
  */
 
 import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { promisify } from "node:util";
 import type {
   Conversation,
   Message,
   Friend,
+  GetMediaParams,
+  MediaContent,
   VoiceCall,
   SnapchatClient,
   SendMessageParams,
@@ -49,6 +53,8 @@ const SNAPCHAT_ACTIVITY = "com.snapchat.android.LandingPageActivity";
 export interface AdbClientConfig {
   /** adb serial (empty = single connected device) */
   serial?: string;
+  /** Chemin explicite d'adb ; par défaut ANDROID_HOME/platform-tools/adb, sinon PATH */
+  adbPath?: string;
   /** Localized UI labels for Snapchat chat screen */
   labels?: {
     mic?: string;
@@ -58,13 +64,30 @@ export interface AdbClientConfig {
   };
 }
 
+/**
+ * Ressources vérifiées sur l'app réelle (v14.22, 09/2026) — les ids de l'écran
+ * de connexion sont stables, ceux du reste de l'app sont obfusqués.
+ */
+const SNAP_IDS = {
+  welcomeLoginButton: "com.snapchat.android:id/login_text",
+  usernameField: "com.snapchat.android:id/username_or_email_field",
+  passwordField: "com.snapchat.android:id/password_field",
+  submitButton: "com.snapchat.android:id/nav_button",
+} as const;
+
 export class AdbSnapchatClient implements SnapchatClient {
   private readonly serial?: string;
+  private readonly adbPath: string;
   private readonly labels: Required<NonNullable<AdbClientConfig["labels"]>>;
   private activeCall: VoiceCall | null = null;
 
   constructor(config: AdbClientConfig = {}) {
     this.serial = config.serial;
+    // adb n'est pas toujours dans le PATH (constaté sur Windows) : on essaie
+    // ANDROID_HOME/platform-tools d'abord.
+    const home = process.env.ANDROID_HOME ?? process.env.ANDROID_SDK_ROOT;
+    const sdkAdb = home ? join(home, "platform-tools", process.platform === "win32" ? "adb.exe" : "adb") : null;
+    this.adbPath = config.adbPath ?? (sdkAdb && existsSync(sdkAdb) ? sdkAdb : "adb");
     this.labels = {
       mic: config.labels?.mic ?? "Voice note",
       chat: config.labels?.chat ?? "Chat",
@@ -82,7 +105,7 @@ export class AdbSnapchatClient implements SnapchatClient {
   /** Run an adb shell command and return trimmed stdout. */
   private async shell(command: string): Promise<string> {
     try {
-      const { stdout } = await exec("adb", [...this.baseArgs(), "shell", command]);
+      const { stdout } = await exec(this.adbPath, [...this.baseArgs(), "shell", command]);
       return stdout.trim();
     } catch (err) {
       const msg = (err as { stderr?: string; message?: string }).stderr
@@ -112,6 +135,19 @@ export class AdbSnapchatClient implements SnapchatClient {
     return null;
   }
 
+  /** Trouve un élément par resource-id exact (fiable quand l'obfuscation ne touche pas l'id). */
+  private findElementByResourceId(xml: string, resourceId: string): { x: number; y: number } | null {
+    const re = /<node[^>]*resource-id="([^"]*)"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(xml)) !== null) {
+      const [, id, l, t, r, b] = m;
+      if (id === resourceId && l && t && r && b) {
+        return { x: Math.round((+l + +r) / 2), y: Math.round((+t + +b) / 2) };
+      }
+    }
+    return null;
+  }
+
   private async tap(x: number, y: number): Promise<void> {
     await this.shell(`input tap ${x} ${y}`);
   }
@@ -128,8 +164,24 @@ export class AdbSnapchatClient implements SnapchatClient {
     await this.tap(pos.x, pos.y);
   }
 
+  /** Tap by exact resource-id (verified-stable ids like the login screen). */
+  private async tapByResourceId(resourceId: string): Promise<void> {
+    const xml = await this.dumpUi();
+    const pos = this.findElementByResourceId(xml, resourceId);
+    if (!pos) throw new Error(`UI resource "${resourceId}" not found on screen`);
+    await this.tap(pos.x, pos.y);
+  }
+
+  /** Masque le clavier virtuel qui couvre les boutons du bas de l'écran. */
+  private async hideKeyboard(): Promise<void> {
+    await this.shell("input keyevent 111"); // KEYCODE_ESCAPE : ferme l'IME sans quitter l'app
+    await new Promise((r) => setTimeout(r, 1200));
+  }
+
   private async openApp(): Promise<void> {
-    await this.shell(`am start -n ${SNAPCHAT_PACKAGE}/${SNAPCHAT_ACTIVITY}`);
+    // monkey LAUNCHER est plus robuste que am start : l'activité d'entrée
+    // a changé plusieurs fois (vérifié : LoginSignupActivity puis Landing).
+    await this.shell(`monkey -p ${SNAPCHAT_PACKAGE} -c android.intent.category.LAUNCHER 1`);
     await new Promise((r) => setTimeout(r, 2500));
   }
 
@@ -148,6 +200,61 @@ export class AdbSnapchatClient implements SnapchatClient {
       await this.tapByText(contact);
     }
     await new Promise((r) => setTimeout(r, 1200));
+  }
+
+  /**
+   * Connexion Snapchat Android par identifiants (SNAPCHAT_USERNAME / EMAIL +
+   * PASSWORD de l'environnement ou du .env). Parcours vérifié sur l'app réelle :
+   * écran d'accueil → « Log In » → formulaire (ids stables) → clavier masqué
+   * → « Log In ». NE PAS répéter les tentatives : un refus silencieux est
+   * typique du pare-feu anti-émulateur, et chaque essai abîme la réputation
+   * du compte. Un login réussi affiche la boîte « Save password? » (Not now).
+   */
+  async login(): Promise<{ loggedIn: boolean; detail: string }> {
+    await this.openApp();
+    await new Promise((r) => setTimeout(r, 6000));
+
+    // Écran d'accueil : bouton « Log In » (texte du lien sous le bouton jaune).
+    try {
+      await this.tapByResourceId(SNAP_IDS.welcomeLoginButton);
+    } catch {
+      // Déjà connecté ou écran différent : on continue.
+    }
+    await new Promise((r) => setTimeout(r, 5000));
+
+    const username = process.env.SNAPCHAT_USERNAME?.trim() || process.env.SNAPCHAT_EMAIL?.trim();
+    const password = process.env.SNAPCHAT_PASSWORD;
+    if (!username || !password) {
+      return { loggedIn: false, detail: "SNAPCHAT_USERNAME/EMAIL ou SNAPCHAT_PASSWORD absent de l'environnement ou du .env." };
+    }
+
+    await this.tapByResourceId(SNAP_IDS.usernameField);
+    await new Promise((r) => setTimeout(r, 1500));
+    await this.shell(`input text ${username.replace(/[^a-zA-Z0-9.@_+-]/g, "")}`);
+    await new Promise((r) => setTimeout(r, 1000));
+    await this.tapByResourceId(SNAP_IDS.passwordField);
+    await new Promise((r) => setTimeout(r, 1500));
+    await this.shell(`input text ${password.replace(/[^a-zA-Z0-9@#%+=_-]/g, "")}`);
+    await new Promise((r) => setTimeout(r, 1000));
+    await this.hideKeyboard();
+    await this.tapByResourceId(SNAP_IDS.submitButton);
+
+    // L'authentification peut prendre plus d'une minute côté serveur.
+    for (let i = 0; i < 12; i++) {
+      await new Promise((r) => setTimeout(r, 10_000));
+      const xml = await this.dumpUi();
+      if (this.findElementByResourceId(xml, SNAP_IDS.usernameField)) continue; // toujours le formulaire
+      if (/Save password|Not now/i.test(xml)) {
+        await this.tapByText("Not now").catch(() => undefined);
+      }
+      // Formulaire disparu : soit connecté, soit écran intermédiaire.
+      await new Promise((r) => setTimeout(r, 5000));
+      return { loggedIn: true, detail: "Formulaire de connexion quitté : session en cours d'ouverture (vérifiez l'écran du device)." };
+    }
+    return {
+      loggedIn: false,
+      detail: "Le formulaire reste affiché sans message d'erreur : refus silencieux probable (émulateur signalé, ou identifiants). Une seule tentative par session — n'insistez pas.",
+    };
   }
 
   private makeConversation(id: string): Conversation {
@@ -265,6 +372,12 @@ export class AdbSnapchatClient implements SnapchatClient {
   async markAsRead(_conversationId: string): Promise<void> {
     // Opening a chat marks messages as read.
     await this.openChatScreen(_conversationId);
+  }
+
+  async getMedia(_params: GetMediaParams): Promise<MediaContent> {
+    throw new Error(
+      "Le backend ADB ne remonte pas encore les médias reçus : utilisez Telegram pour lire les images reçues.",
+    );
   }
 
   // ── Friends ────────────────────────────────────────────────────

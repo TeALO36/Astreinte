@@ -66,6 +66,12 @@ SNAPCHAT_CLIENT=telegram # Telegram MTProto — messages, fichiers audio/notes v
 
 Snapchat détecte agressivement les émulateurs (Play Integrity, attestation de device) : les comptes loggés depuis un émulateur (BlueStacks, Android Studio, Genymotion) sont bannis quasi-immédiatement. Même Waydroid (conteneur Android natif) reste risqué. **Conclusion : un vrai téléphone Android (via ADB) est l'option fiable ; l'émulation n'est pas recommandée.**
 
+Confirmé expérimentalement (09/2026) :
+
+- Snapchat v14.22 **s'installe** depuis le Play Store sur un AVD Android 15 (image Google Play, profil Pixel 5) et **se lance** — la compatibilité d'installation n'est pas le problème.
+- La connexion depuis l'émulateur est en revanche **silencieusement refusée** : les identifiants sont acceptés (Google propose même d'enregistrer le mot de passe), mais aucune session n'est créée — sans erreur, sans captcha — et les tentatives suivantes sont ignorées. Le compte de test a été banni peu après, ce qui confirme l'avertissement ci-dessus.
+- Snapchat **Web** : une connexion par identifiants en fenêtre visible réussit une fois (e-mail + mot de passe, sans captcha), la session est persistée (`state.json`), puis les démarrages headless la réutilisent ; à expiration, une reconnexion automatique retente le parcours par identifiants.
+
 ## Pipeline voix (notes vocales) — le « vocal » demandé
 
 1. L'agent IA appelle `send_voice_note(conversationId, text)` ; `text` reste un transcript et une estimation de durée.

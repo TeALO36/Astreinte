@@ -2,6 +2,22 @@
 // Lance les trois machines virtuelles Android du banc, attend la fin du boot,
 // ouvre le Play Store sur chacune et vérifie qu'il est bien à l'écran.
 //
+// PRÉREQUIS (créés une fois via sdkmanager/avdmanager — procédure vérifiée) :
+//   sdkmanager "emulator" "system-images;android-35;google_apis_playstore;x86_64"
+//   avdmanager create avd -n SnapMCP_API35 -k "system-images;android-35;google_apis_playstore;x86_64" -d pixel_5
+//   ⚠ sur Windows, si le SDK n'est pas à l'endroit par défaut, avdmanager peut
+//   écrire un mauvais image.sysdir.1 dans l'AVD : corriger en
+//   `system-images\android-35\google_apis_playstore\x86_64\` et lancer
+//   l'émulateur avec ANDROID_SDK_ROOT défini.
+//
+// COMPTE GOOGLE (Play Store) : le compte du .env (GOOGLE_EMAIL/PASSWORD) se
+// connecte sans mot de passe ni captcha sur l'AVD — vérifié 09/2026.
+// SNAPCHAT S'INSTALLE depuis le Play Store sur un AVD Google Play (v14.22
+// vérifiée) et se LANCE, mais la CONNEXION par identifiants se heurte à un
+// refus silencieux (pare-feu anti-émulateur) : la première tentative passe
+// (prompt « Save password » = identifiants acceptés), les suivantes sont
+// ignorées sans erreur. Une seule tentative par session — voir AdbSnapchatClient.login().
+//
 // Usage :
 //   node scripts/android-vms.mjs                 # démarre tout, fenêtres visibles
 //   node scripts/android-vms.mjs --no-window     # sans fenêtre (CI, serveur)

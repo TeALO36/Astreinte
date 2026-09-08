@@ -375,8 +375,11 @@ test("un modèle injoignable prévient la personne au lieu de l'ignorer", async 
   await waitFor(() => bridge.sent.length >= 1, 8000);
 
   assert.match(bridge.sent[0]?.text ?? "", /je reviens vers toi/i);
-  const log = agent.recentLog();
-  assert.ok(log.at(-1)?.error, "l'échec doit être tracé dans le journal");
+  // L'agent pousse l'entrée de journal dans son `finally`, APRÈS la
+  // résolution de l'envoi : attendre qu'elle existe, sinon la course
+  // fait échouer le test sous charge.
+  await waitFor(() => agent.recentLog().at(-1)?.error != null, 8000);
+  assert.ok(agent.recentLog().at(-1)?.error, "l'échec doit être tracé dans le journal");
 
   await transport.stop();
   await bridge.close();
@@ -496,6 +499,8 @@ test("un pont qui accepte les images reçoit la photo générée, avec la légen
   assert.equal(bridge.sent[0]?.media?.mimeType, "image/png");
   assert.equal(bridge.sent[0]?.media?.caption, "Voici l'image !");
 
+  // Même course que pour le log d'erreur : l'entrée arrive après l'envoi.
+  await waitFor(() => agent.recentLog().at(-1)?.image === true, 8000);
   const entry = agent.recentLog().at(-1);
   assert.equal(entry?.image, true, "le journal doit tracer l'envoi d'image");
 

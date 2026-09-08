@@ -23,6 +23,7 @@ La couche `SnapchatClient` est une **interface TypeScript** conservée comme con
 | `get_conversations` | Lister les conversations récentes du backend choisi (individuelles et groupes) |
 | `get_conversation` | Détails d'une conversation spécifique |
 | `get_messages` | Récupérer les messages d'une conversation |
+| `get_media` | Télécharger le média (image, vidéo, audio) attaché à un message reçu — renvoie le fichier en base64 avec son type MIME |
 | `mark_as_read` | Marquer une conversation comme lue |
 
 ### Messagerie

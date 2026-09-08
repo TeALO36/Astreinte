@@ -56,7 +56,7 @@ node dist/index.js daemon    # le persona tourne
 | `npm run test` | compile puis lance les deux suites de tests (`dist/*.test.js`). |
 | `npm run dev` | recompile en continu pendant le développement (`tsc --watch`). |
 | `npm run start` | lance le démon depuis `dist/` (`node dist/index.js daemon`). |
-| `npm run test-bench` | ouvre le banc de test local (diagnostic, connexion Telegram, envois réels). |
+| `npm run test-bench` | ouvre le banc de test local (diagnostic, connexion Telegram, envois réels, **lecture des messages et affichage des médias reçus**). |
 | `npm run telegram:login` | connexion compte personnel (téléphone + code). |
 | `npm run telegram:login:qr` | connexion compte personnel par **QR code** (scan avec le téléphone). |
 | `npm run telegram:login:bot` | connexion **bot** avec son jeton (`--bot <jeton>`). |

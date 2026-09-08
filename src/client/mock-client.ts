@@ -18,6 +18,8 @@ import type {
   Conversation,
   Message,
   Friend,
+  GetMediaParams,
+  MediaContent,
   VoiceCall,
   SnapchatClient,
   SendMessageParams,
@@ -27,6 +29,10 @@ import type {
 } from "./types.js";
 
 // ── Helpers ─────────────────────────────────────────────────────────
+
+/** Un vrai PNG (1×1) pour la démonstration du rendu des médias reçus. */
+const MOCK_1PX_PNG_BASE64 =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 
 let nextId = 100;
 function uid(prefix: string): string {
@@ -312,6 +318,16 @@ export class MockSnapchatClient implements SnapchatClient {
     await delay();
     const conv = this.conversations.find((c) => c.id === conversationId);
     if (conv) conv.unreadCount = 0;
+  }
+
+  async getMedia(params: GetMediaParams): Promise<MediaContent> {
+    await delay();
+    const message = mockMessages.find((m) => m.id === params.messageId);
+    if (!message?.mediaUrl) {
+      throw new Error(`Aucun média pour le message ${params.messageId}.`);
+    }
+    // Un vrai PNG (1×1) : prouve le rendu de bout en bout sans réseau.
+    return { mimeType: "image/png", base64: MOCK_1PX_PNG_BASE64 };
   }
 
   // ── Friends ─────────────────────────────────────────────────────

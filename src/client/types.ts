@@ -107,6 +107,18 @@ export interface WebSessionStatus {
   detail: string;
 }
 
+/** Contenu binaire d'un média reçu, prêt à afficher (data URL) ou à sauver. */
+export interface MediaContent {
+  mimeType: string;
+  base64: string;
+}
+
+export interface GetMediaParams {
+  conversationId: string;
+  /** Identifiant du message tel que renvoyé par `getMessages`. */
+  messageId: string;
+}
+
 export interface SnapchatClient {
   getConversations(limit?: number): Promise<Conversation[]>;
   getConversation(conversationId: string): Promise<Conversation>;
@@ -114,6 +126,8 @@ export interface SnapchatClient {
   sendMessage(params: SendMessageParams): Promise<Message>;
   sendSnap(params: SendSnapParams): Promise<Message>;
   sendVoiceNote(params: SendVoiceNoteParams): Promise<Message>;
+  /** Télécharge le média (image, vidéo, audio) attaché à un message reçu. */
+  getMedia(params: GetMediaParams): Promise<MediaContent>;
   markAsRead(conversationId: string): Promise<void>;
   listFriends(): Promise<Friend[]>;
   getFriend(friendId: string): Promise<Friend>;
@@ -124,4 +138,6 @@ export interface SnapchatClient {
   /** Available for the Snapchat Web backend; absent on other backends. */
   openLogin?: () => Promise<WebSessionStatus>;
   getSessionStatus?: () => Promise<WebSessionStatus>;
+  /** Available for the ADB backend (Android app): automated credential login. */
+  login?: () => Promise<{ loggedIn: boolean; detail: string }>;
 }

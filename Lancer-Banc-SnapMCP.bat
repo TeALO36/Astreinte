@@ -61,6 +61,20 @@ if errorlevel 1 (
 )
 
 echo.
+
+
+rem ffmpeg installe par l assistant dans D:\tools\ffmpeg (winget) : versions
+rem datees dans un sous-dossier, exposees via une jonction current.
+if exist "D:\tools\ffmpeg\current\bin\ffmpeg.exe" goto ffmpeg_ok
+for /d %%D in ("D:\tools\ffmpeg\ffmpeg-*") do set "FFDIR=%%D"
+if defined FFDIR if not exist "D:\tools\ffmpeg\current" mklink /j "D:\tools\ffmpeg\current" "%FFDIR%" >nul 2>&1
+:ffmpeg_ok
+if exist "D:\tools\ffmpeg\current\bin\ffmpeg.exe" (
+    set "PATH=D:\tools\ffmpeg\current\bin;%PATH%"
+    echo ffmpeg : D:\tools\ffmpeg\current\bin ajoute au PATH.
+) else (
+    where ffmpeg >nul 2>&1 || echo AVERTISSEMENT : ffmpeg absent - les vocaux Telegram echoueront.
+)
 echo [4/4] Ouverture du banc de test...
 echo La fenetre du navigateur va s'ouvrir automatiquement.
 echo Pour arreter le banc : fermer la fenetre ou utiliser Ctrl+C ici.

@@ -69,14 +69,16 @@ export function resolveTelegramSession(
 
   if (!Number.isInteger(apiId) || apiId <= 0) {
     throw new Error(
-      "TELEGRAM_API_ID est requis pour Telegram. " +
-        "Créez api_id/api_hash sur https://my.telegram.org.",
+      "TELEGRAM_API_ID est requis pour Telegram. Créez api_id/api_hash sur " +
+        "https://my.telegram.org, puis renseignez-les dans extension/.env " +
+        "(ou dans la section 2 du banc de test).",
     );
   }
   if (!apiHash) {
     throw new Error(
-      "TELEGRAM_API_HASH est requis pour Telegram. " +
-        "Créez api_id/api_hash sur https://my.telegram.org.",
+      "TELEGRAM_API_HASH est requis pour Telegram. Créez api_id/api_hash sur " +
+        "https://my.telegram.org, puis renseignez-les dans extension/.env " +
+        "(ou dans la section 2 du banc de test).",
     );
   }
 

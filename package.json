@@ -34,10 +34,12 @@
     "android:vms:headless": "node scripts/android-vms.mjs --no-window",
     "android:vms:stop": "node scripts/android-vms.mjs --check-only --quit-after-check",
     "smoke": "node scripts/smoke-test.mjs",
+    "verify:web": "node scripts/verify-webclient.mjs",
     "telegram:login": "node scripts/telegram-login.mjs",
+    "snapchat:login": "node scripts/snapchat-login.mjs",
     "telegram:login:qr": "node scripts/telegram-login.mjs --qr",
     "telegram:login:bot": "node scripts/telegram-login.mjs --bot",
-    "test": "tsc && node --test --test-timeout=25000 --test-force-exit dist/snap-astreinte.test.js dist/e2e.test.js dist/client-adapter.test.js dist/persona-image.test.js dist/login-flow.test.js dist/bridge-integration.test.js && node scripts/smoke-test.mjs",
+    "test": "tsc && node --test --test-timeout=25000 --test-force-exit dist/snap-astreinte.test.js dist/e2e.test.js dist/client-adapter.test.js dist/persona-image.test.js dist/login-flow.test.js dist/bridge-integration.test.js dist/get-media.test.js dist/env.test.js && node scripts/smoke-test.mjs",
     "check": "node dist/index.js check"
   },
   "keywords": [

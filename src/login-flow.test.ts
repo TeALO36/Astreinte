@@ -147,6 +147,22 @@ test("QrLoginFlow : une erreur d'authentification passe en phase « error »", a
   assert.match(flow.status.error ?? "", /AUTH_KEY_UNREGISTERED/);
 });
 
+test("QrLoginFlow : begin ne rejette jamais, même si le client explose à la construction", async () => {
+  const flow = new QrLoginFlow({
+    sessionFile: join(home, "qr-factory-ko.txt"),
+    clientFactory: () => {
+      throw new Error("api_id invalide (constructeur)");
+    },
+  });
+
+  // Le banc fait `void flow.begin(...)` : la promesse doit se résoudre et
+  // l'erreur doit être visible dans status, sinon c'est un rejet non géré
+  // qui peut tuer le processus.
+  await flow.begin(1, "hash");
+  assert.equal(flow.status.phase, "error");
+  assert.match(flow.status.error ?? "", /api_id invalide/);
+});
+
 test("QrLoginFlow : cancel interrompt le parcours", async () => {
   const flow = new QrLoginFlow({
     sessionFile: join(home, "qr-cancel.txt"),

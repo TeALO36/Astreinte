@@ -24,6 +24,23 @@ const { ClientTransport } = await import("./transports/client-adapter.js");
 type SnapchatClient = import("./client/types.js").SnapchatClient;
 
 process.on("exit", () => rmSync(home, { recursive: true, force: true }));
+/**
+ * Contrat de construction : un client Telegram sans identifiants se
+ * construit sans lever — l'erreur véridique n'apparaît qu'à l'usage. Sinon,
+ * le serveur MCP entier meurt à l'import pour un problème de config.
+ */
+test("TelegramSnapchatClient : sans identifiants, la construction passe et l'usage explique quoi faire", async () => {
+  const { TelegramSnapchatClient } = await import("./client/telegram-client.js");
+  const client = new TelegramSnapchatClient({});
+  await assert.rejects(
+    () => client.getConversations(),
+    (e: Error) => {
+      assert.match(e.message, /TELEGRAM_API_ID/);
+      assert.match(e.message, /my.telegram.org/);
+      return true;
+    },
+  );
+});
 
 /** Modèle factice : reprend le dernier message, pour tracer l'origine. */
 class FakeLlm {

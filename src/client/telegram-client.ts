@@ -14,6 +14,8 @@ import { CustomFile } from "telegram/client/uploads.js";
 import type {
   Conversation,
   Friend,
+  GetMediaParams,
+  MediaContent,
   Message,
   SendMessageParams,
   SendSnapParams,
@@ -88,38 +90,64 @@ export interface TelegramClientConfig {
 const TELEGRAM_VIEW_ONCE_TTL = 0x7fffffff;
 
 export class TelegramSnapchatClient implements SnapchatClient {
-  private readonly session: ResolvedTelegramSession;
+  private readonly config: TelegramClientConfig;
   private readonly connectionRetries: number;
+  /** Résolution paresseuse : le constructeur ne doit jamais lever. */
+  private resolved: ResolvedTelegramSession | null = null;
+  private resolveError: Error | null = null;
   private client: GramJsTelegramClient | null = null;
+  /** Single-flight : N appels concurrents partagent un seul connect(). */
+  private ensurePromise: Promise<GramJsTelegramClient> | null = null;
 
   constructor(config: TelegramClientConfig = {}) {
-    this.session = resolveTelegramSession(config);
+    this.config = config;
     this.connectionRetries = config.connectionRetries ?? 5;
   }
 
-  private loadSession(): string {
-    return loadSessionString(this.session);
+  /** Résout les identifiants une seule fois ; l'erreur reste mémorisée. */
+  private session(): ResolvedTelegramSession {
+    if (!this.resolved && !this.resolveError) {
+      try {
+        this.resolved = resolveTelegramSession(this.config);
+      } catch (e) {
+        this.resolveError = e instanceof Error ? e : new Error(String(e));
+      }
+    }
+    if (this.resolveError) throw this.resolveError;
+    return this.resolved!;
   }
 
   private async ensureClient(): Promise<GramJsTelegramClient> {
     if (this.client) return this.client;
+    if (!this.ensurePromise) {
+      this.ensurePromise = this.createClient().catch((e) => {
+        // Échec non mémorisé : une session qui apparaît ou un réseau qui
+        // revient doivent permettre de retenter au prochain appel.
+        this.ensurePromise = null;
+        throw e;
+      });
+    }
+    return this.ensurePromise;
+  }
 
+  private async createClient(): Promise<GramJsTelegramClient> {
+    const session = this.session();
     // En mode bot, aucun fichier de session n'est requis : le jeton suffit et
     // ensureSessionAuthorized crée l'authentification au premier démarrage.
     let sessionString = "";
     try {
-      sessionString = this.loadSession();
+      sessionString = loadSessionString(session);
     } catch (e) {
-      if (this.session.authType !== "bot" || !this.session.botToken) throw e;
+      if (session.authType !== "bot" || !session.botToken) throw e;
     }
 
     const client = new GramJsTelegramClient(
       new StringSession(sessionString),
-      this.session.apiId,
-      this.session.apiHash,
+      session.apiId,
+      session.apiHash,
       { connectionRetries: this.connectionRetries },
     );
-    await ensureSessionAuthorized(client, this.session);
+    await ensureSessionAuthorized(client, session);
     this.client = client;
     return client;
   }
@@ -228,6 +256,35 @@ export class TelegramSnapchatClient implements SnapchatClient {
       messages.push(this.mapMessage(message, conversationId));
     }
     return messages;
+  }
+
+  async getMedia(params: GetMediaParams): Promise<MediaContent> {
+    const client = await this.ensureClient();
+    const entity = await this.resolve(client, params.conversationId);
+    // L'identifiant renvoyé par getMessages est « telegram_msg_<id> ».
+    const numeric = Number(params.messageId.replace(/^telegram_msg_/, ""));
+    if (!Number.isFinite(numeric)) {
+      throw new Error(`Identifiant de message invalide : ${params.messageId}`);
+    }
+
+    const found = await client.getMessages(entity, { ids: [numeric] });
+    const message = found[0];
+    if (!message) throw new Error(`Message ${params.messageId} introuvable.`);
+    if (!message.media) {
+      throw new Error(`Le message ${params.messageId} n'a pas de média.`);
+    }
+
+    const buffer = await client.downloadMedia(message, {});
+    if (!buffer || typeof buffer === "string") {
+      throw new Error("Téléchargement du média impossible.");
+    }
+
+    const media = message.media as { className?: string; document?: { mimeType?: string } };
+    const mimeType =
+      media.document?.mimeType ??
+      (media.className === "MessageMediaPhoto" ? "image/jpeg" : undefined) ??
+      "application/octet-stream";
+    return { mimeType, base64: (buffer as Buffer).toString("base64") };
   }
 
   async sendMessage(params: SendMessageParams): Promise<Message> {

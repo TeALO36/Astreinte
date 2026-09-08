@@ -42,8 +42,8 @@ for (const s of steps) {
 }
 
 const expectedTools = [
-  "open_web_login", "web_session_status",
-  "get_conversations", "get_conversation", "get_messages", "mark_as_read",
+  "open_web_login", "web_session_status", "adb_login",
+  "get_conversations", "get_conversation", "get_messages", "get_media", "mark_as_read",
   "send_message", "send_snap", "send_voice_note", "list_friends", "get_friend",
   "voice_call", "end_call", "call_status", "active_call",
 ];

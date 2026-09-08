@@ -12,6 +12,7 @@
 
 import { Agent } from "./agent.js";
 import { Config, astreinteHome } from "./config.js";
+import { loadDotEnv } from "./env.js";
 import { runMcpServer } from "./mcp.js";
 import { Llm } from "./llm.js";
 import { Tts } from "./tts.js";
@@ -21,6 +22,8 @@ import { withinActiveHours } from "./policy.js";
 
 /** Cadence de relance des messages mis en attente hors plage horaire. */
 const FLUSH_INTERVAL_MS = 60_000;
+
+loadDotEnv();
 
 async function daemon(): Promise<void> {
   const cfg = Config.load();

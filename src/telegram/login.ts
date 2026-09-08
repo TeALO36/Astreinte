@@ -133,11 +133,25 @@ export class QrLoginFlow {
     return { ...this.state };
   }
 
-  /** Lance le parcours en arrière-plan. Ne bloque pas sur le scan. */
+  /**
+   * Lance le parcours en arrière-plan. Ne bloque pas sur le scan et ne
+   * rejette jamais : tout échec (constructeur, connexion, authentification)
+   * finit en phase « error » pour que l'appelant qui fait juste `void
+   * begin(...)` voie l'erreur dans `status` au lieu d'une promesse rejetée
+   * hors de son contrôle.
+   */
   async begin(apiId: number, apiHash: string): Promise<void> {
-    const client = this.opts.clientFactory
-      ? this.opts.clientFactory(apiId, apiHash)
-      : realClient(apiId, apiHash);
+    let client: TelegramLoginClient;
+    try {
+      client = this.opts.clientFactory
+        ? this.opts.clientFactory(apiId, apiHash)
+        : realClient(apiId, apiHash);
+    } catch (e) {
+      this.finished = true;
+      this.state.phase = "error";
+      this.state.error = (e as Error).message;
+      return;
+    }
     this.client = client;
 
     try {

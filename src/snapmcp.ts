@@ -9,9 +9,11 @@
 
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { Config } from "./config.js";
+import { loadDotEnv } from "./env.js";
 import { createSnapchatClient } from "./client/index.js";
 import { createSnapMcpServer } from "./server.js";
 
+loadDotEnv();
 const config = Config.load();
 const configuredDriver = config.str("transport.driver").toLowerCase();
 const configuredSnapchat = config.str("transport.snapchat_client").toLowerCase();

@@ -48,6 +48,10 @@ const LimitSchema = z.object({
   limit: z.number().min(1).max(100).optional().default(20).describe("Maximum number of items"),
 });
 const MessagesSchema = ConversationIdSchema.merge(LimitSchema);
+const GetMediaSchema = z.object({
+  conversationId: z.string().describe("ID of the conversation"),
+  messageId: z.string().describe("ID of the message, as returned by get_messages"),
+});
 const CallIdSchema = z.object({ callId: z.string().describe("ID of the voice call") });
 const FriendIdSchema = z.object({ friendId: z.string().describe("ID of the friend") });
 
@@ -98,6 +102,26 @@ export function createSnapMcpServer(client: SnapchatClient): McpServer {
   );
 
   server.registerTool(
+    "adb_login",
+    {
+      title: "Log In on Snapchat Android (ADB)",
+      description:
+        "Automate the Snapchat Android login with SNAPCHAT_USERNAME (or EMAIL) + SNAPCHAT_PASSWORD from the environment or .env. One patient attempt per session — never retry on silent refusal.",
+      inputSchema: EmptySchema,
+    },
+    async () => {
+      if (!client.login) {
+        throw new Error("La connexion automatisée est disponible uniquement avec le backend ADB.");
+      }
+      const result = await client.login();
+      return {
+        content: [{ type: "text", text: result.detail }],
+        structuredContent: { result },
+      };
+    },
+  );
+
+  server.registerTool(
     "get_conversations",
     {
       title: "Get Conversations",
@@ -136,6 +160,29 @@ export function createSnapMcpServer(client: SnapchatClient): McpServer {
     async ({ conversationId, limit }) => {
       const messages = await client.getMessages(conversationId, limit);
       return { content: [{ type: "text", text: JSON.stringify(messages, null, 2) }], structuredContent: { messages } };
+    },
+  );
+
+  server.registerTool(
+    "get_media",
+    {
+      title: "Get Received Media",
+      description:
+        "Download the image, video or audio attached to a received message. Returns the file as base64 with its MIME type, ready to display or save.",
+      inputSchema: GetMediaSchema,
+      annotations: { readOnlyHint: true, idempotentHint: true },
+    },
+    async ({ conversationId, messageId }) => {
+      const media = await client.getMedia({ conversationId, messageId });
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Média de ${messageId} : ${media.mimeType} (${Math.round((media.base64.length * 3) / 4 / 1024)} Ko).`,
+          },
+        ],
+        structuredContent: { media },
+      };
     },
   );
 
