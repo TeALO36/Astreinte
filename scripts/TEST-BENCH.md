@@ -40,6 +40,22 @@ Le banc s'appuie sur trois VM Android (AVD), toutes en API 35 avec l'image **Goo
 | `SnapMCP_Pixel7_API35` | `emulator-5556` | Pixel 7 |
 | `SnapMCP_PixelFold_API35` | `emulator-5558` | Pixel Fold |
 
+### Créer les VM la première fois
+
+Les trois AVD n'existent pas sur une machine neuve, et `android:vms` s'arrête
+alors sur « AVD manquants ». Pour les fabriquer :
+
+```bash
+npm run android:provision                       # état des lieux, ne change rien
+npm run android:provision -- --all              # composants du SDK, puis AVD
+```
+
+L'état des lieux est le comportement par défaut : l'installation télécharge
+plusieurs gigaoctets (image système `google_apis_playstore` comprise) et écrit
+dans le SDK de la machine. Options : `--install` (composants seuls),
+`--create-avds` (AVD seuls), `--api 34` (viser une autre API), `--force`
+(recréer un AVD existant — ses snapshots et ses données partent avec).
+
 Pour les démarrer et vérifier le Play Store sur chacune :
 
 ```bash
@@ -56,3 +72,28 @@ adb -s emulator-5554 emu kill
 adb -s emulator-5556 emu kill
 adb -s emulator-5558 emu kill
 ```
+
+## Lire et piloter l'écran d'une VM
+
+Une capture PNG ne se compare pas en script. `android:screen` lit l'arbre
+d'interface — c'est lui qui dit quels textes et quels boutons sont réellement à
+l'écran — et sait y toucher.
+
+```bash
+npm run android:screen                              # décrit l'écran
+npm run android:screen -- --grep "Play"             # échoue si le texte est absent
+npm run android:screen -- --tap 540 1200            # appuie
+npm run android:screen -- --swipe 540 1600 540 600  # fait défiler
+npm run android:screen -- --back                    # retour
+npm run android:screen -- --home                    # accueil
+npm run android:screen -- --text "bonjour"          # saisit du texte
+npm run android:screen -- --keyevent 82             # une touche brute
+```
+
+Sans `--serial`, le script agit sur le seul appareil prêt ; s'il y en a
+plusieurs, il refuse plutôt que d'en choisir un. Chaque action est suivie d'une
+relecture de l'écran, si bien qu'on voit ce qu'elle a produit. La capture et
+l'arbre XML sont écrits dans le dossier temporaire indiqué en sortie.
+
+`--grep` rend un code de sortie non nul quand le texte manque : c'est ce qui
+permet d'enchaîner des vérifications dans un script.

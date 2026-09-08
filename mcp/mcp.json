@@ -2,9 +2,9 @@
   "mcpServers": {
     "snap-astreinte": {
       "command": "node",
-      "args": ["${LOCARYN_PLUGIN_ROOT}/dist/index.js", "mcp"],
+      "args": ["${LOCARYN_MORPH_ROOT}/dist/index.js", "mcp"],
       "env": {
-        "SNAP_ASTREINTE_HOME": "${LOCARYN_PLUGIN_ROOT}/.data"
+        "SNAP_ASTREINTE_HOME": "${LOCARYN_MORPH_ROOT}/.data"
       },
       "transport": "stdio",
       "auto_start": true
