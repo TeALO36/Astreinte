@@ -81,7 +81,7 @@ pre{background:#0a0e12;border:1px solid rgba(255,255,255,.1);border-radius:8px;p
 
 <h2>1 · Persona</h2>
 <section><div id="editor"><span class="muted">Chargement du schéma…</span></div>
-<button id="save">Enregistrer</button> <button id="reload" class="ghost">Recharger</button>
+<button id="save">Enregistrer</button> <button id="reload" class="ghost">Recharger</button> <button id="exportBtn" class="ghost">Exporter en fichier</button> <button id="importBtn" class="ghost">Importer un fichier…</button><input id="importFile" type="file" accept="application/json,.json" hidden>
 <span id="saveState" class="muted"></span>
 <label style="margin-top:14px">Aperçu du prompt système réel (pour un message entrant « Salut, mon wifi coupe »)</label>
 <pre id="prompt">…</pre></section>
@@ -144,6 +144,9 @@ function refreshHistory(){api('/api/studio/history').then(({history})=>{$('chat'
 async function refreshStatus(){try{const s=await api('/api/studio/persona/status');$('runBadge').textContent=s.running?('actif ('+s.llmMode+')'):'arrêté';$('runBadge').className='badge '+(s.running?'on':'off');
  $('start').disabled=s.running;$('stop').disabled=!s.running;$('runInfo').textContent=s.running?('pont : '+s.bridge):'';$('dlog').textContent=s.lastStderr||''}catch(e){}}
 $('save').onclick=save;$('reload').onclick=()=>renderEditor().then(promptPreview);
+$('exportBtn').onclick=async()=>{try{const data=await api('/api/studio/export',{});const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=(data.name||'persona').replace(/[^a-zA-Z0-9_-]+/g,'-').toLowerCase()+'.persona.json';a.click();URL.revokeObjectURL(a.href);$('saveState').textContent='Exporté : '+a.download}catch(e){$('saveState').textContent='Erreur : '+e.message}};
+$('importBtn').onclick=()=>$('importFile').click();
+$('importFile').onchange=async()=>{const file=$('importFile').files[0];$('importFile').value='';if(!file)return;try{const body=JSON.parse(await file.text());const r=await api('/api/studio/import',body);await renderEditor();promptPreview();let msg='Importé : '+r.imported+' réglage(s)';if(r.unknownKeys.length)msg+=' · inconnus ignorés : '+r.unknownKeys.join(', ');if(r.ignoredSecrets.length)msg+=' · secrets non importés : '+r.ignoredSecrets.join(', ');$('saveState').textContent=msg}catch(e){$('saveState').textContent='Import refusé : '+e.message}};
 $('start').onclick=async()=>{try{await api('/api/studio/persona/start',{llmMode:$('llmMode').value})}catch(e){alert(e.message)}refreshStatus()};
 $('stop').onclick=async()=>{await api('/api/studio/persona/stop');refreshStatus()};
 $('newContact').onclick=()=>{$('cid').value='studio-'+Math.random().toString(36).slice(2,7)};
@@ -253,6 +256,12 @@ export function createStudio() {
       }
       case "/api/studio/prompt":
         return json(200, { prompt: effectivePrompt() });
+
+      // ------------------------------------------------- persona (fichier)
+      case "/api/studio/export":
+        return json(200, exportPersona());
+      case "/api/studio/import":
+        return importPersona(json, value);
 
       // ------------------------------------------------- Morph
       case "/api/studio/morph":
@@ -417,6 +426,80 @@ export function createStudio() {
         throw new Error("aperçu sans canal");
       },
     };
+  }
+
+  // --------------------------------------------- export / import (fichier)
+  /**
+   * Export : une enveloppe versionnée sans aucun secret — le fichier est fait
+   * pour être partagé, et les clés secrètes du schéma n'y entrent jamais.
+   */
+  function exportPersona() {
+    const config = storedConfig();
+    const schema = loadSchema();
+    const exported = {};
+    for (const [key, value] of Object.entries(config)) {
+      if (schema[key]?.type === "secret") continue;
+      exported[key] = value;
+    }
+    return {
+      format: "snap-astreinte-persona",
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      name: String(config["persona.name"] ?? "").trim() || "persona",
+      config: exported,
+    };
+  }
+
+  /**
+   * Import, deux formes :
+   *  - l'enveloppe d'export → le fichier EST la persona : remise aux défauts
+   *    du schéma puis application du fichier (recharger un persona partagé) ;
+   *  - un objet plat de clés de config → simple patch (fusion).
+   *
+   * Dans les deux cas, les clés secrètes sont ignorées et signalées : un
+   * fichier de config n'est pas l'endroit des secrets (cf. Config.save).
+   */
+  function importPersona(json, value) {
+    const schema = loadSchema();
+    const secrets = new Set(
+      Object.entries(schema)
+        .filter(([, f]) => f.type === "secret")
+        .map(([k]) => k),
+    );
+    let patch;
+    let replace = false;
+    if (value && typeof value === "object" && !Array.isArray(value) && value.format !== undefined) {
+      if (value.format !== "snap-astreinte-persona" || value.version !== 1) {
+        return json(400, {
+          error: "Format de fichier persona non reconnu (format/version). Utilisez un fichier produit par « Exporter ».",
+        });
+      }
+      if (!value.config || typeof value.config !== "object" || Array.isArray(value.config)) {
+        return json(400, { error: "Fichier persona sans section config." });
+      }
+      patch = value.config;
+      replace = true;
+    } else if (value && typeof value === "object" && !Array.isArray(value)) {
+      patch = value;
+    } else {
+      return json(400, { error: "Corps d'import absent ou invalide." });
+    }
+
+    const ignoredSecrets = [];
+    for (const key of Object.keys(patch)) {
+      if (secrets.has(key)) {
+        ignoredSecrets.push(key);
+        delete patch[key];
+      }
+    }
+
+    if (replace) {
+      // Le fichier remplace la persona : on repart des défauts du schéma.
+      rmSync(join(home, "config.json"), { force: true });
+    }
+    const { unknownKeys } = Config.load().update(patch);
+    const imported = Object.keys(patch).length - unknownKeys.length;
+    return json(200, { imported, unknownKeys, ignoredSecrets, config: storedConfig() });
   }
 
   // ------------------------------------------------- Morph (info réelle)

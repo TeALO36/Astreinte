@@ -95,6 +95,51 @@ try {
     promptResp.prompt?.includes("StudioTest") && promptResp.prompt?.includes("Tu traites uniquement"),
   );
 
+  // ------------------------------------------------- fichier persona
+  const envelope = (await api("/api/studio/export")).json;
+  ok(
+    "Q1. export = enveloppe versionnée",
+    envelope.format === "snap-astreinte-persona" &&
+      envelope.version === 1 &&
+      typeof envelope.config === "object" &&
+      envelope.config?.["persona.name"] === "StudioTest",
+  );
+  ok("Q2. aucun secret dans l'export", !JSON.stringify(envelope).includes('"llm.api_key"'));
+
+  const secretSave = await api("/api/studio/config/save", { config: { "llm.api_key": "sk-vraiment-secret" } });
+  ok("Q3. le secret est enregistré côté studio", secretSave.status === 200);
+  ok("Q4. le secret n'apparaît pas même après enregistrement", !JSON.stringify((await api("/api/studio/export")).json).includes("sk-vraiment-secret"));
+
+  // Fichier plat (une config brute) → fusion simple.
+  const flat = await api("/api/studio/import", { "persona.name": "Importe" });
+  ok(
+    "Q5. import plat = fusion (le reste de la config est conservé)",
+    flat.status === 200 &&
+      flat.json.imported === 1 &&
+      flat.json.config?.["persona.name"] === "Importe" &&
+      flat.json.config?.["limits.escalation_keywords"]?.length > 0,
+  );
+
+  // Enveloppe d'export → le fichier EST la persona : remise aux défauts puis
+  // application. C'est aussi ce qui restaure l'état attendu par la suite.
+  const restore = await api("/api/studio/import", envelope);
+  // Après remplacement, la config contient toutes les clés du schéma à leurs
+  // défauts : le secret doit avoir disparu (chaîne vide), pas être undefined.
+  ok(
+    "Q6. import enveloppe = remplacement + secret évincé",
+    restore.status === 200 &&
+      restore.json.config?.["persona.name"] === "StudioTest" &&
+      !restore.json.config?.["llm.api_key"] &&
+      restore.json.imported >= 2,
+  );
+
+  ok("Q7. enveloppe inconnue → 400", (await api("/api/studio/import", { format: "autre-chose" })).status === 400);
+  const secretIgnored = await api("/api/studio/import", { "llm.api_key": "sk-x" });
+  ok(
+    "Q8. clé secrète dans un import → ignorée et signalée",
+    secretIgnored.status === 200 && secretIgnored.json.ignoredSecrets?.includes("llm.api_key"),
+  );
+
   // ---------------------------------------------------------- Morph
   const { json: morph } = await api("/api/studio/morph");
   ok(
