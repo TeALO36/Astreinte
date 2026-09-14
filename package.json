@@ -1,6 +1,6 @@
 {
   "name": "snap-astreinte",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Persona de messagerie : vous définissez un personnage (nom, personnalité, voix, garde-fous) et il répond seul sur Telegram ou Snapchat, avec un contexte isolé par interlocuteur et des notes vocales générées par TTS. Inclut SnapMCP, un serveur MCP pour contrôler Snapchat ou Telegram (messages, médias, notes vocales, appels).",
   "license": "MIT",
   "type": "module",
