@@ -389,6 +389,12 @@ export function createStudio() {
   }
 
   async function shutdown() {
+    // Les flux SSE ouverts empêchent server.close() de finir : on les ferme,
+    // le gestionnaire « close » de chaque requête fait le ménage dans les sets.
+    for (const set of [store.uiClients, store.bridgeClients]) {
+      for (const res of set) res.end();
+      set.clear();
+    }
     await stopPersona();
     store.mocks?.server.close();
     store.mocks = null;

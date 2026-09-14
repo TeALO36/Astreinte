@@ -38,6 +38,7 @@
     "smoke": "node scripts/smoke-test.mjs",
     "verify:web": "node scripts/verify-webclient.mjs",
     "verify:studio": "node scripts/verify-studio.mjs",
+    "verify:bench": "node scripts/verify-bench.mjs",
     "telegram:login": "node scripts/telegram-login.mjs",
     "snapchat:login": "node scripts/snapchat-login.mjs",
     "telegram:login:qr": "node scripts/telegram-login.mjs --qr",

@@ -42,6 +42,12 @@ Vérification E2E de tout le parcours (40 scénarios, sans compte) :
 npm run verify:studio
 ```
 
+Vérification sans tête du banc lui-même (démarrage, accueil et /studio en HTTP 200, arrêt, port libéré — aucun compte) :
+
+```bash
+npm run verify:bench
+```
+
 Banc + Studio en un double-clic : **Lancer-Banc-SnapMCP.bat** (le Studio est dans le lien en haut du banc).
 
 Les identifiants Telegram saisis dans cette fenêtre restent en mémoire du processus et ne sont pas écrits par le banc. Une clé erronée n'interrompt plus rien : chaque outil renvoie une erreur véridique et le serveur reste utilisable. Fermer la fenêtre ou cliquer sur **Fermer les sessions** après les essais.
