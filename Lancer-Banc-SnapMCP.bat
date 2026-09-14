@@ -47,22 +47,6 @@ echo [3/4] Compilation du serveur MCP...
 call npm run build
 if errorlevel 1 goto :build_failed
 
-where ffmpeg >nul 2>&1
-if errorlevel 1 (
-    echo.
-    echo AVERTISSEMENT : ffmpeg est absent du PATH.
-    echo Les vocaux Telegram ne pourront pas etre convertis automatiquement.
-)
-where adb >nul 2>&1
-if errorlevel 1 (
-    echo.
-    echo AVERTISSEMENT : ADB est absent du PATH.
-    echo Les tests telephone et VM Android seront indisponibles.
-)
-
-echo.
-
-
 rem ffmpeg installe par l assistant dans D:\tools\ffmpeg (winget) : versions
 rem datees dans un sous-dossier, exposees via une jonction current.
 if exist "D:\tools\ffmpeg\current\bin\ffmpeg.exe" goto ffmpeg_ok
@@ -72,9 +56,15 @@ if defined FFDIR if not exist "D:\tools\ffmpeg\current" mklink /j "D:\tools\ffmp
 if exist "D:\tools\ffmpeg\current\bin\ffmpeg.exe" (
     set "PATH=D:\tools\ffmpeg\current\bin;%PATH%"
     echo ffmpeg : D:\tools\ffmpeg\current\bin ajoute au PATH.
-) else (
-    where ffmpeg >nul 2>&1 || echo AVERTISSEMENT : ffmpeg absent - les vocaux Telegram echoueront.
 )
+
+rem Avertissements APRES l'installation : ils reflechissent l'etat final.
+where ffmpeg >nul 2>&1
+if errorlevel 1 echo AVERTISSEMENT : ffmpeg est absent du PATH, les vocaux Telegram echoueront.
+where adb >nul 2>&1
+if errorlevel 1 echo AVERTISSEMENT : ADB est absent du PATH, les tests telephone et VM Android seront indisponibles.
+
+echo.
 echo [4/4] Ouverture du banc de test...
 echo La fenetre du navigateur va s'ouvrir automatiquement.
 echo Pour arreter le banc : fermer la fenetre ou utiliser Ctrl+C ici.
