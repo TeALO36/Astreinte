@@ -37,6 +37,7 @@
     "android:vms:stop": "node scripts/android-vms.mjs --check-only --quit-after-check",
     "smoke": "node scripts/smoke-test.mjs",
     "verify:web": "node scripts/verify-webclient.mjs",
+    "verify:studio": "node scripts/verify-studio.mjs",
     "telegram:login": "node scripts/telegram-login.mjs",
     "snapchat:login": "node scripts/snapchat-login.mjs",
     "telegram:login:qr": "node scripts/telegram-login.mjs --qr",

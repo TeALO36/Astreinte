@@ -28,6 +28,22 @@ npm run test-bench -- --no-open --port 8787
 
 Le diagnostic ne fait aucun envoi. Les boutons d'envoi et les appels manuels peuvent agir réellement sur le compte ou l'appareil sélectionné.
 
+## Persona Studio — configurer le Morph et tester une situation réelle
+
+Le lien **« Persona Studio → »** en haut du banc ouvre `/studio`, une page en trois volets qui ne touchent ni Snapchat ni Telegram :
+
+1. **Persona** — le formulaire est construit sur le schéma du manifeste (`plugin.json`), les mêmes groupes que l'application Locaryn affichera. L'aperçu sous le formulaire est le **prompt système réel** (celui que le démon envoie au modèle), recalculé après chaque enregistrement.
+2. **Morph** — l'état de l'intégration Locaryn : sections de réglages déclarées, variables du manifeste MCP (avec alerte si l'une d'elles n'est pas substituée par l'application), chemin à coller dans Réglages → Extensions.
+3. **Situation réelle** — **Démarrer le persona** lance le vrai démon (`transport.driver=bridge`) contre un pont simulé intégré au banc (contrat de `src/transports/bridge.ts`). Vous écrivez comme un correspondant : la réponse arrive avec le contexte, les garde-fous, l'escalade, les notes vocales et les images de la vraie chaîne. Le moteur de réponse est « simulé » (aucun modèle requis) ou votre llama-server local. Les scénarios d'un clic couvrent les cas types ; l'escalade rend ensuite le persona silencieux pour ce contact — y compris après un redémarrage — jusqu'au bouton **Réinitialiser**.
+
+Vérification E2E de tout le parcours (24 scénarios, sans compte) :
+
+```bash
+npm run verify:studio
+```
+
+Banc + Studio en un double-clic : **Lancer-Banc-SnapMCP.bat** (le Studio est dans le lien en haut du banc).
+
 Les identifiants Telegram saisis dans cette fenêtre restent en mémoire du processus et ne sont pas écrits par le banc. Une clé erronée n'interrompt plus rien : chaque outil renvoie une erreur véridique et le serveur reste utilisable. Fermer la fenêtre ou cliquer sur **Fermer les sessions** après les essais.
 
 ## Les trois machines virtuelles Android

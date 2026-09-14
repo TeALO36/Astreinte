@@ -62,6 +62,10 @@ SNAPCHAT_CLIENT=telegram # Telegram MTProto — messages, fichiers audio/notes v
 - **Limite** : injecter un fichier audio pré-enregistré dans le micro via adb n'est pas fiable (nécessite un mic virtuel rooté). Documenté dans le code.
 - **ADB sans câble** : `adb pair` + `adb connect` (debug sans fil, Android 11+) → pas besoin de garder le téléphone branché, juste sur le même réseau.
 
+## Morph — intégration Locaryn (09/2026)
+
+L'extension s'installe dans Locaryn comme **Morph** : le manifeste `plugin.json` (schéma de réglages + `ui_contributions.settings_sections`), le serveur MCP déclaré dans `mcp/mcp.json` (`${LOCARYN_PLUGIN_ROOT}` est la seule variable de chemin que l'application substitue — `loader.rs` ; ne pas utiliser d'autre orthographe, le serveur ne démarrerait pas), et les réglages écrits par l'application dans `<morph>/.data/config.json`, qui est aussi le `SNAP_ASTREINTE_HOME` du serveur : un réglage changé dans l'app atteint le persona sans un ligne de colle. Le contrat est épinglé par `src/morph-config.test.ts`, l'état de l'intégration est visible dans l'onglet Morph du Persona Studio (`npm run test-bench` → `/studio`).
+
 ## Pourquoi pas l'émulation ?
 
 Snapchat détecte agressivement les émulateurs (Play Integrity, attestation de device) : les comptes loggés depuis un émulateur (BlueStacks, Android Studio, Genymotion) sont bannis quasi-immédiatement. Même Waydroid (conteneur Android natif) reste risqué. **Conclusion : un vrai téléphone Android (via ADB) est l'option fiable ; l'émulation n'est pas recommandée.**
