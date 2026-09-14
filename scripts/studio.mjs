@@ -22,9 +22,9 @@
 
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { deflateSync } from "node:zlib";
 import { Agent } from "../dist/agent.js";
@@ -82,6 +82,8 @@ pre{background:#0a0e12;border:1px solid rgba(255,255,255,.1);border-radius:8px;p
 <h2>1 · Persona</h2>
 <section><div id="editor"><span class="muted">Chargement du schéma…</span></div>
 <button id="save">Enregistrer</button> <button id="reload" class="ghost">Recharger</button> <button id="exportBtn" class="ghost">Exporter en fichier</button> <button id="importBtn" class="ghost">Importer un fichier…</button><input id="importFile" type="file" accept="application/json,.json" hidden>
+<label id="examplesLabel" style="margin-top:12px">Personas d'exemple — un clic charge celle-ci (et remplace la persona actuelle)</label>
+<div class="scen" id="examples"><span class="muted">…</span></div>
 <span id="saveState" class="muted"></span>
 <label style="margin-top:14px">Aperçu du prompt système réel (pour un message entrant « Salut, mon wifi coupe »)</label>
 <pre id="prompt">…</pre></section>
@@ -147,6 +149,7 @@ $('save').onclick=save;$('reload').onclick=()=>renderEditor().then(promptPreview
 $('exportBtn').onclick=async()=>{try{const data=await api('/api/studio/export',{});const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=(data.name||'persona').replace(/[^a-zA-Z0-9_-]+/g,'-').toLowerCase()+'.persona.json';a.click();URL.revokeObjectURL(a.href);$('saveState').textContent='Exporté : '+a.download}catch(e){$('saveState').textContent='Erreur : '+e.message}};
 $('importBtn').onclick=()=>$('importFile').click();
 $('importFile').onchange=async()=>{const file=$('importFile').files[0];$('importFile').value='';if(!file)return;try{const body=JSON.parse(await file.text());const r=await api('/api/studio/import',body);await renderEditor();promptPreview();let msg='Importé : '+r.imported+' réglage(s)';if(r.unknownKeys.length)msg+=' · inconnus ignorés : '+r.unknownKeys.join(', ');if(r.ignoredSecrets.length)msg+=' · secrets non importés : '+r.ignoredSecrets.join(', ');$('saveState').textContent=msg}catch(e){$('saveState').textContent='Import refusé : '+e.message}};
+api('/api/studio/examples').then(({examples})=>{examples=examples||[];if(!examples.length){$('examplesLabel').textContent='';return}const box=$('examples');box.innerHTML='';examples.forEach(x=>{const b=document.createElement('button');b.title=x.description||'';b.textContent=x.name;b.onclick=async()=>{try{const ex=await api('/api/studio/example',{id:x.id});const r=await api('/api/studio/import',ex);await renderEditor();promptPreview();$('saveState').textContent='Persona chargée : '+x.name+(r.ignoredSecrets&&r.ignoredSecrets.length?' (secrets évincés : '+r.ignoredSecrets.join(', ')+')':'')}catch(e){$('saveState').textContent='Erreur : '+e.message}};box.append(b)})}).catch(()=>{$('examplesLabel').textContent=''})
 $('start').onclick=async()=>{try{await api('/api/studio/persona/start',{llmMode:$('llmMode').value})}catch(e){alert(e.message)}refreshStatus()};
 $('stop').onclick=async()=>{await api('/api/studio/persona/stop');refreshStatus()};
 $('newContact').onclick=()=>{$('cid').value='studio-'+Math.random().toString(36).slice(2,7)};
@@ -262,6 +265,13 @@ export function createStudio() {
         return json(200, exportPersona());
       case "/api/studio/import":
         return importPersona(json, value);
+      case "/api/studio/examples":
+        return json(200, { examples: listPersonaExamples() });
+      case "/api/studio/example": {
+        const found = readPersonaExample(String(value?.id ?? ""));
+        if (!found) return json(404, { error: "Persona d'exemple introuvable." });
+        return json(200, found);
+      }
 
       // ------------------------------------------------- Morph
       case "/api/studio/morph":
@@ -500,6 +510,55 @@ export function createStudio() {
     const { unknownKeys } = Config.load().update(patch);
     const imported = Object.keys(patch).length - unknownKeys.length;
     return json(200, { imported, unknownKeys, ignoredSecrets, config: storedConfig() });
+  }
+
+  /** Personas d'exemple livrés avec l'extension (examples/personas/). */
+  function examplesDir() {
+    return join(ROOT, "examples", "personas");
+  }
+
+  function listPersonaExamples() {
+    try {
+      return readdirSync(examplesDir())
+        .filter((f) => f.endsWith(".persona.json"))
+        .sort()
+        .map((file) => {
+          try {
+            const parsed = JSON.parse(readFileSync(join(examplesDir(), file), "utf8"));
+            return {
+              id: file.replace(/\.persona\.json$/, ""),
+              file,
+              name: String(parsed.name ?? file),
+              description: describeExample(parsed.config ?? {}),
+            };
+          } catch {
+            return null; // un exemple illisible ne bloque pas les autres
+          }
+        })
+        .filter(Boolean);
+    } catch {
+      return []; // dossier absent : la section disparaît, rien ne casse
+    }
+  }
+
+  /** Une phrase qui dit à quoi sert la persona, à partir de sa config. */
+  function describeExample(config) {
+    const style = String(config["persona.style"] ?? "").trim();
+    const first = style.split(/[.!?]/)[0]?.trim() ?? "";
+    return first.slice(0, 140);
+  }
+
+  /** Lit un exemple par identifiant, confiné au dossier des exemples. */
+  function readPersonaExample(id) {
+    if (!/^[a-zA-Z0-9_-]+$/.test(id)) return null;
+    const file = `${id}.persona.json`;
+    const path = join(examplesDir(), file);
+    if (!path.startsWith(examplesDir() + sep) || !existsSync(path)) return null;
+    try {
+      return JSON.parse(readFileSync(path, "utf8"));
+    } catch {
+      return null;
+    }
   }
 
   // ------------------------------------------------- Morph (info réelle)

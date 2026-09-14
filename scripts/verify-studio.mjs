@@ -140,6 +140,67 @@ try {
     secretIgnored.status === 200 && secretIgnored.json.ignoredSecrets?.includes("llm.api_key"),
   );
 
+  // --------------------------------------------- personas d'exemple (1 clic)
+  const examples = (await api("/api/studio/examples")).json.examples ?? [];
+  const exampleIds = examples.map((x) => x.id);
+  ok(
+    "R1. trois personas d'exemple listées",
+    ["astreinte-informatique", "chloe-visio", "guide-musee"].every((id) => exampleIds.includes(id)) &&
+      examples.every((x) => x.name && x.description),
+    exampleIds.join(", "),
+  );
+
+  const astreinteEx = (await api("/api/studio/example", { id: "astreinte-informatique" })).json;
+  ok(
+    "R2. exemple = enveloppe conforme",
+    astreinteEx.format === "snap-astreinte-persona" &&
+      astreinteEx.version === 1 &&
+      astreinteEx.config?.["persona.name"] === "Astreinte",
+  );
+
+  // Le chemin exact de l'UI : récupérer l'exemple puis l'importer tel quel.
+  // Valeurs peu banales volontairement présentes dans le fichier du guide :
+  // elles prouvent que l'import passe par la coercition réelle de Config.
+  const guideEx = (await api("/api/studio/example", { id: "guide-musee" })).json;
+  const guideImport = await api("/api/studio/import", guideEx);
+  ok(
+    "R3. un clic charge la persona (valeurs coercitées)",
+    guideImport.status === 200 &&
+      guideImport.json.config?.["persona.name"] === "Elias" &&
+      guideImport.json.config?.["limits.max_turns_before_escalation"] === 0 &&
+      guideImport.json.config?.["voice.mode"] === "on_request",
+  );
+
+  ok("R4. identifiant inconnu → 404", (await api("/api/studio/example", { id: "nimporte-pas" })).status === 404);
+  ok("R5. traversée de chemin refusée → 404", (await api("/api/studio/example", { id: "../studio" })).status === 404);
+
+  // Restauration : la suite (démon, escalade) attend la persona des tests.
+  // On passe par un import d'enveloppe qui épingle TOUT ce que la section
+  // démon dépend : nom, langue, mots-clés ET message d'escalade (R3 vient de
+  // charger celle du guide de musée), voix et images actives.
+  const daemonPersona = {
+    format: "snap-astreinte-persona",
+    version: 1,
+    name: "StudioTest",
+    config: {
+      "persona.name": "StudioTest",
+      "persona.language": "fr",
+      "limits.enabled": true,
+      "limits.escalation_keywords": ["urgent", "remboursement"],
+      "limits.escalation_message":
+        "Là je préfère que ce soit traité directement — je transmets, on te répond dès que possible.",
+      "voice.mode": "on_request",
+      "image.mode": "on_request",
+    },
+  };
+  const restored = await api("/api/studio/import", daemonPersona);
+  ok(
+    "R6. état des tests daemon restauré (enveloppe)",
+    restored.status === 200 &&
+      restored.json.config?.["persona.name"] === "StudioTest" &&
+      restored.json.config?.["limits.escalation_message"].startsWith("Là je préfère"),
+  );
+
   // ---------------------------------------------------------- Morph
   const { json: morph } = await api("/api/studio/morph");
   ok(

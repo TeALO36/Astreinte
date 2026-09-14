@@ -32,11 +32,11 @@ Le diagnostic ne fait aucun envoi. Les boutons d'envoi et les appels manuels peu
 
 Le lien **« Persona Studio → »** en haut du banc ouvre `/studio`, une page en trois volets qui ne touchent ni Snapchat ni Telegram :
 
-1. **Persona** — le formulaire est construit sur le schéma du manifeste (`plugin.json`), les mêmes groupes que l'application Locaryn affichera. L'aperçu sous le formulaire est le **prompt système réel** (celui que le démon envoie au modèle), recalculé après chaque enregistrement. **Exporter en fichier** / **Importer un fichier** sauvegardent et rechargent une persona en JSON (enveloppe `snap-astreinte-persona`) : un import de fichier *remplace* la persona, un import d'objet plat *fusionne* — et les clés secrètes ne sont jamais exportées ni importées.
+1. **Persona** — le formulaire est construit sur le schéma du manifeste (`plugin.json`), les mêmes groupes que l'application Locaryn affichera. L'aperçu sous le formulaire est le **prompt système réel** (celui que le démon envoie au modèle), recalculé après chaque enregistrement. **Exporter en fichier** / **Importer un fichier** sauvegardent et rechargent une persona en JSON (enveloppe `snap-astreinte-persona`) : un import de fichier *remplace* la persona, un import d'objet plat *fusionne* — et les clés secrètes ne sont jamais exportées ni importées. Trois **personas d'exemple** (astreinte informatique, préparation de visio, guide de musée) se chargent en un clic depuis `examples/personas/`.
 2. **Morph** — l'état de l'intégration Locaryn : sections de réglages déclarées, variables du manifeste MCP (avec alerte si l'une d'elles n'est pas substituée par l'application), chemin à coller dans Réglages → Extensions.
 3. **Situation réelle** — **Démarrer le persona** lance le vrai démon (`transport.driver=bridge`) contre un pont simulé intégré au banc (contrat de `src/transports/bridge.ts`). Vous écrivez comme un correspondant : la réponse arrive avec le contexte, les garde-fous, l'escalade, les notes vocales et les images de la vraie chaîne. Le moteur de réponse est « simulé » (aucun modèle requis) ou votre llama-server local. Les scénarios d'un clic couvrent les cas types ; l'escalade rend ensuite le persona silencieux pour ce contact — y compris après un redémarrage — jusqu'au bouton **Réinitialiser**.
 
-Vérification E2E de tout le parcours (32 scénarios, sans compte) :
+Vérification E2E de tout le parcours (40 scénarios, sans compte) :
 
 ```bash
 npm run verify:studio
